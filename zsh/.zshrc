@@ -69,13 +69,10 @@ source <(fzf --zsh)
 source "$DOT/.fzfrc"
 
 # Configure Atuin
-command -v atuin &>/dev/null || brew install atuin
-eval "$(atuin init zsh)"
-bindkey '^e' atuin-search
-bindkey '^[[A' atuin-up-search
-
-# Enable 1Password plugins
-source "$XDG_CONFIG_HOME/op/plugins.sh"
+# command -v atuin &>/dev/null || brew install atuin
+# eval "$(atuin init zsh)"
+# bindkey '^e' atuin-search
+# bindkey '^[[A' atuin-up-search
 
 # Configure z.lua
 [ -d "$(brew --prefix)/share/z.lua" ] || brew install z.lua
