@@ -16,7 +16,7 @@ alias ......="cd ../../../../.."
 alias cl='clear'
 alias grep='grep --color=auto'
 alias l='eza --all --long --git --icons=always --group-directories-first'
-alias tree='tree -aCI ".editorconfig|.git|.github|.gitignore|.shellcheckrc|LICENSE"'
+alias tree='tree -aCI ".git|.github"'
 alias vf='fzf --preview "bat -n --color=always {}" | xargs -r nvim'
 
 # Printing Long List Format
@@ -60,7 +60,7 @@ alias tl='tmux-list-sessions'
 
 # Git
 alias gst='git status'
-alias glg='git log --graph --date=format:"%b-%d-%Y" --pretty="%C(yellow)%h %C(black)%an %C(brightmagenta)%ad%C(auto)%d %C(white)%s %Creset"'
+alias glg='git log --graph --date=format:"%b-%d-%Y" --pretty="%C(yellow)%h %C(blue)%an %C(brightmagenta)%ad%C(auto)%d %C(white)%s %Creset"'
 alias gss='git status --short'
 alias grs='git restore'
 alias grst='git restore --staged'
@@ -78,7 +78,6 @@ alias grv='git remote --verbose'
 alias gmv='git mv'
 alias grm='git rm'
 alias gco='git checkout'
-alias gsw='git switch'
 alias gb='git branch'
 alias gmg='git merge'
 

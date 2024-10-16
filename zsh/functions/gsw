@@ -1,0 +1,9 @@
+#!/usr/bin/env zsh
+
+# Function overload for git switch fuzzy finding
+
+if (( $# == 0 )) && command -v fzf; then
+  git switch $(git branch | fzf --header 'Switch Local  ')
+else
+  git switch "$@"
+fi

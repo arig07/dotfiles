@@ -7,6 +7,13 @@ take() {
   cd "$dir"
 }
 
+count-files() (
+  shopt -s nullglob
+  local dir=$1
+  local files=("$dir"/* "$dir"/.*)
+  echo "${#files[@]}"
+)
+
 combinepdf() {
   gs -q -dNOPAUSE -dBATCH -sDEVICE=pdfwrite -sOutputFile="$1" "${@:2}"
 }
@@ -17,6 +24,15 @@ tmux_list_sessions() {
   printf "%-13s %-5s %-25s\n", "Session", "Win", "Date Created"; \
   print "·······································"} \
   { printf "%-13s %-5s %s %s %s (%s:%s)\n", $1, $2, $6, $7, $11, $8, $9 }'
+}
+
+gsw() {
+  # Function overload for git switch fuzzy finding
+  if (( $# == 0 )) && command -v fzf; then
+    git switch $(git branch | fzf --header 'Switch Local  ')
+  else
+    git switch "$@"
+  fi
 }
 
 condainit() {
@@ -88,7 +104,7 @@ update_icons() {
   declare -A dir_icons=(
 
     # Apps                                 Icons
-    /Applications/1Password.app            ~/Pictures/icons/1password.png
+    /Applications/1Password.app            ~/Pictures/icons/1password-macos.png
     /Applications/ChatGPT.app              ~/Pictures/icons/chatgpt.png
     /Applications/Discord.app              ~/Pictures/icons/discord-macos.png
     /Applications/Figma.app                ~/Pictures/icons/figma.png

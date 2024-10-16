@@ -1,10 +1,6 @@
-# Powerlevel10k Theme configuration
+# Powerlevel10k theme configuration - based on p10k-lean-8colors
 
-# Load base theme file
-[ -f "$(brew --prefix)/share/powerlevel10k/powerlevel10k.zsh-theme" ] || brew install powerlevel10k
-source "$(brew --prefix)/share/powerlevel10k/powerlevel10k.zsh-theme"
-
-# Temporarily change options.
+# Temporarily change options
 'builtin' 'local' '-a' 'p10k_config_opts'
 [[ ! -o 'aliases'         ]] || p10k_config_opts+=('aliases')
 [[ ! -o 'sh_glob'         ]] || p10k_config_opts+=('sh_glob')
@@ -224,7 +220,7 @@ source "$(brew --prefix)/share/powerlevel10k/powerlevel10k.zsh-theme"
   declare -g POWERLEVEL9K_PROMPT_CHAR_ERROR_{VIINS,VICMD,VIVIS,VIOWR}_FOREGROUND=$red     # Last Command Fail Color
 
   declare -g POWERLEVEL9K_PROMPT_CHAR_{OK,ERROR}_VICMD_CONTENT_EXPANSION='%F{12}%f'      # Vim Command Mode Symbol
-  declare -g POWERLEVEL9K_PROMPT_CHAR_{OK,ERROR}_VIVIS_CONTENT_EXPANSION='%F{13}%f'      # Vim Visual Mode Symbol
+  declare -g POWERLEVEL9K_PROMPT_CHAR_{OK,ERROR}_VIVIS_CONTENT_EXPANSION='%F{14}%f'      # Vim Visual Mode Symbol
   declare -g POWERLEVEL9K_PROMPT_CHAR_{OK,ERROR}_VIOWR_CONTENT_EXPANSION='▶'              # Vim Overwrite Mode Symbol
   declare -g POWERLEVEL9K_PROMPT_CHAR_OVERWRITE_STATE=true
 
