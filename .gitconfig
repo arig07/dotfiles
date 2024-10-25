@@ -29,8 +29,8 @@
 	changed = yellow
 	branch = magenta
 	nobranch = red
-	remoteBranch = red
-	localBranch = cyan
+	remoteBranch = cyan
+	localBranch = magenta
 	unmerged = yellow
 [color "diff"]
 	old = red
@@ -39,12 +39,12 @@
 	frag = blue
 	context = brightblack
 [color "decorate"]
-	HEAD = green
+	HEAD = brightgreen
 	branch = magenta
-	remoteBranch = red
+	remoteBranch = cyan
 	tag = brightyellow
 	stash = cyan
 	grafted = red
 	hash = magenta
-[maintenance]
-	; repo = ~/.dotfiles
+[advice]
+	detachedHead = false
