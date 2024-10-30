@@ -111,10 +111,12 @@ update_icons() {
     /Applications/KeyCastr.app             ~/Pictures/icons/keycastr.png
     /Applications/Mimestream.app           ~/Pictures/icons/gmail.png
     /Applications/Neovim.app               ~/Pictures/icons/neovim.png
+    /Applications/Python\ 3.13             ~/Pictures/icons/python.png
     /Applications/Slack.app                ~/Pictures/icons/slack.png
     /Applications/Spotify.app              ~/Pictures/icons/spotify.png
     /Applications/Tex                      ~/Pictures/icons/tex.png
     /Applications/Visual\ Studio\ Code.app ~/Pictures/icons/vscode.png
+    /Applications/WezTerm.app              ~/Pictures/icons/wezterm.png
 
     # Folders                              Icons
     ~/Developer                            ~/Pictures/icons/developer.png

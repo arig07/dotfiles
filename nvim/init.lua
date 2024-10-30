@@ -1,3 +1,11 @@
+--  _   _ ______ ______      _______ __  __
+-- | \ | |  ____/ __ \ \    / /_   _|  \/  |
+-- |  \| | |__ | |  | \ \  / /  | | | \  / |
+-- | . ` |  __|| |  | |\ \/ /   | | | |\/| |
+-- | |\  | |___| |__| | \  /   _| |_| |  | |
+-- |_| \_|______\____/   \/   |_____|_|  |_|
+-- https://neovim.io/doc/
+
 -- Bootstrap lazy.nvim
 local lazypath = vim.fn.stdpath("data") .. "/lazy/lazy.nvim"
 if not (vim.uv or vim.loop).fs_stat(lazypath) then
