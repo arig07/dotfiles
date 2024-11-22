@@ -1,8 +1,8 @@
-dofile(vim.g.base46_cache .. 'cmp')
+require('utils.ui').set_base46 'cmp'
 
 local cmp = require 'cmp'
 
-local options = {
+return vim.tbl_deep_extend('force', {
   completion = { completeopt = 'menu,menuone' },
 
   snippet = {
@@ -52,6 +52,4 @@ local options = {
     { name = 'nvim_lua' },
     { name = 'path' },
   },
-}
-
-return vim.tbl_deep_extend('force', options, require 'nvchad.cmp')
+}, require 'nvchad.cmp')

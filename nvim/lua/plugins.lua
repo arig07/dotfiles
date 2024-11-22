@@ -1,15 +1,67 @@
 return {
+  'nvzone/menu',
+  'nvzone/volt',
+  {
+    'nvzone/minty',
+    cmd = { 'Huefy', 'Shades' },
+  },
+
+  {
+    'nvzone/showkeys',
+    cmd = { 'ShowkeysToggle' },
+    opts = require 'configs.showkeys',
+  },
+
+  {
+    'vivek-x-jha/base46',
+    build = function()
+      require('base46').load_all_highlights()
+    end,
+  },
+
+  {
+    'vivek-x-jha/ui',
+    lazy = false,
+    config = function()
+      require 'nvchad'
+    end,
+  },
+
+  {
+    'nvim-tree/nvim-web-devicons',
+    opts = function()
+      return require 'configs.webdevicons'
+    end,
+  },
+
+  {
+    'nvim-treesitter/nvim-treesitter',
+    event = { 'BufReadPost', 'BufNewFile' },
+    cmd = { 'TSInstall', 'TSBufEnable', 'TSBufDisable', 'TSModuleInfo' },
+    build = ':TSUpdate',
+    opts = function()
+      return require 'configs.treesitter'
+    end,
+  },
+
+  {
+    'nvim-telescope/telescope.nvim',
+    cmd = 'Telescope',
+    opts = function()
+      return require 'configs.telescope'
+    end,
+  },
+
+  -------------------------------- ai support -------------------------------
+
   {
     'yetone/avante.nvim',
     event = 'VeryLazy',
     lazy = false,
     version = false, -- set this if you want to always pull the latest change
-    opts = {
-      provider = 'openai',
-      openai = {
-        model = 'gpt-4o-mini',
-      },
-    },
+    opts = function()
+      return require 'configs.avante'
+    end,
     -- if you want to build from source then do `make BUILD_FROM_SOURCE=true`
     build = 'make',
     -- build = "powershell -ExecutionPolicy Bypass -File Build.ps1 -BuildFromSource false" -- for windows
@@ -48,6 +100,7 @@ return {
       },
     },
   },
+
   -- load luasnips + cmp related in insert mode only
   {
     'hrsh7th/nvim-cmp',
@@ -67,16 +120,8 @@ return {
       -- autopairing of (){}[] etc
       {
         'windwp/nvim-autopairs',
-        opts = {
-          fast_wrap = {},
-          disable_filetype = { 'TelescopePrompt', 'vim' },
-        },
-        config = function(_, opts)
-          require('nvim-autopairs').setup(opts)
-
-          -- setup cmp for autopairs
-          local cmp_autopairs = require 'nvim-autopairs.completion.cmp'
-          require('cmp').event:on('confirm_done', cmp_autopairs.on_confirm_done())
+        opts = function()
+          return require 'configs.autopairs'
         end,
       },
 
@@ -97,35 +142,16 @@ return {
   {
     'stevearc/conform.nvim',
     event = 'BufWritePre',
-    opts = require 'configs.conform',
-  },
-
-  {
-    'neovim/nvim-lspconfig',
-    config = function()
-      require 'configs.lspconfig'
+    opts = function()
+      return require 'configs.conform'
     end,
   },
 
   {
-    'nvim-telescope/telescope.nvim',
-    cmd = 'Telescope',
-    dependencies = {
-      {
-        'nvim-treesitter/nvim-treesitter',
-        event = { 'BufReadPost', 'BufNewFile' },
-        cmd = { 'TSInstall', 'TSBufEnable', 'TSBufDisable', 'TSModuleInfo' },
-        build = ':TSUpdate',
-        opts = function()
-          return require 'configs.treesitter'
-        end,
-        config = function(_, opts)
-          require('nvim-treesitter.configs').setup(opts)
-        end,
-      },
-    },
-    opts = function()
-      return require 'configs.telescope'
+    'neovim/nvim-lspconfig',
+    event = 'User FilePost',
+    config = function()
+      require 'configs.lspconfig'
     end,
   },
 
@@ -152,41 +178,33 @@ return {
   },
 
   {
+    'rcarriga/nvim-notify',
+    module = 'notify',
+    opts = function()
+      return require 'configs.notify'
+    end,
+  },
+
+  {
     'folke/noice.nvim',
     event = 'VeryLazy',
-    dependencies = {
-      'MunifTanjim/nui.nvim',
-      {
-        'rcarriga/nvim-notify',
-        module = 'notify',
-        config = function()
-          require 'configs.notify'
-        end,
-      },
-    }, -- if lazy-loaded, add proper `module='...'` entries
-    config = function()
-      require 'configs.noice'
+    opts = function()
+      return require 'configs.noice'
     end,
   },
 
   {
     'kylechui/nvim-surround',
-    version = '*', -- Use for stability; omit to use `main` branch for the latest features
+    version = '*',
     event = 'VeryLazy',
-    config = function()
-      require 'configs.surround'
+    opts = function()
+      return require 'configs.surround'
     end,
   },
 
   {
-    'vivek-x-jha/tmux-vim-navigator',
-    cmd = {
-      'TmuxNavigateLeft',
-      'TmuxNavigateDown',
-      'TmuxNavigateUp',
-      'TmuxNavigateRight',
-      'TmuxNavigatePrevious',
-    },
+    'christoomey/vim-tmux-navigator',
+    cmd = { 'TmuxNavigateLeft', 'TmuxNavigateDown', 'TmuxNavigateUp', 'TmuxNavigateRight', 'TmuxNavigatePrevious' },
     keys = {
       { '<c-h>', '<cmd>TmuxNavigateLeft<CR>', { desc = 'switch window left' } },
       { '<c-j>', '<cmd>TmuxNavigateDown<CR>', { desc = 'switch window down' } },
@@ -214,51 +232,17 @@ return {
     keys = { '<leader>', '<c-w>', '"', "'", '`', 'c', 'v', 'g' },
     cmd = 'WhichKey',
     opts = function()
-      dofile(vim.g.base46_cache .. 'whichkey')
-      return {}
-    end,
-  },
-
-  'nvim-lua/plenary.nvim',
-  'nvzone/volt',
-  'nvzone/menu',
-  { 'nvzone/minty', cmd = { 'Huefy', 'Shades' } },
-
-  {
-    'nvchad/base46',
-    build = function()
-      require('base46').load_all_highlights()
-    end,
-  },
-
-  {
-    'nvchad/ui',
-    lazy = false,
-    config = function()
-      require 'nvchad'
-    end,
-  },
-
-  {
-    'nvim-tree/nvim-web-devicons',
-    opts = function()
-      dofile(vim.g.base46_cache .. 'devicons')
-      return { override = require 'nvchad.icons.devicons' }
+      return require 'configs.whichkey'
     end,
   },
 
   {
     'lukas-reineke/indent-blankline.nvim',
     event = 'User FilePost',
-    opts = {
-      indent = { char = '│', highlight = 'IblChar' },
-      scope = { char = '│', highlight = 'IblScopeChar' },
-    },
+    opts = function()
+      return require 'configs.indentblankline'
+    end,
     config = function(_, opts)
-      dofile(vim.g.base46_cache .. 'blankline')
-
-      local hooks = require 'ibl.hooks'
-      hooks.register(hooks.type.WHITESPACE, hooks.builtin.hide_first_space_indent_level)
       require('ibl').setup(opts)
 
       dofile(vim.g.base46_cache .. 'blankline')
