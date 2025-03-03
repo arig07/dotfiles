@@ -7,7 +7,7 @@ command -v xcode-select &> /dev/null || { echo Please run: xcode-select --instal
 echo 󰓒 INSTALLATION START 󰓒
 step=0
 
-((step++)); echo 󰓒 [$step/11] INSTALLING PACKAGE MANAGER 󰓒
+((step++)); echo 󰓒 [$step/12] INSTALLING PACKAGE MANAGER 󰓒
 
 if ! command -v brew &>/dev/null; then
   # Install Homebrew
@@ -23,7 +23,7 @@ fi
 
 echo Commands successfully installed: $(brew --prefix)
 
-((step++)); echo "󰓒 [$step/11] INSTALLING COMMANDS & APPS 󰓒"
+((step++)); echo "󰓒 [$step/12] INSTALLING COMMANDS & APPS 󰓒"
 
 # Install commands and apps using Homebrew
 brewfile='https://raw.githubusercontent.com/vivek-x-jha/dotfiles/refs/heads/main/brew/.Brewfile'
@@ -73,7 +73,7 @@ while true; do
   esac
 done
 
-((step++)); echo "󰓒 [$step/11] SET ENVIRONMENT 󰓒"
+((step++)); echo "󰓒 [$step/12] SET ENVIRONMENT 󰓒"
 
 # XDG directory structure
 export XDG_CONFIG_HOME="$HOME/.config"
@@ -155,7 +155,7 @@ EOF
   [[ -z $REPLY || ! $REPLY =~ ^[Yy]$ ]] && break
 done
 
-((step++)); echo "󰓒 [$step/11] CREATE SYMLINKS & DIRECTORIES 󰓒"
+((step++)); echo "󰓒 [$step/12] CREATE SYMLINKS & DIRECTORIES 󰓒"
 
 symlink() {
   local src="$1"
@@ -188,10 +188,10 @@ for dir in "$directories[@]"; do [ -d "$dir" ] || mkdir -p "$dir"; done
 
 # NOTE manage all links - provides fine-grained control over GNU stow
 symlinks=(
+  .dotfiles/hammerspoon        "$HOME" .hammerspoon
   .dotfiles/bash/.bash_profile "$HOME" .bash_profile
   .dotfiles/bash/.bashrc       "$HOME" .bashrc
   .dotfiles/zsh/.zshenv        "$HOME" .zshenv
-  ../.dotfiles/hammerspoon     "$HOME" .hammerspoon
 
   ../.dotfiles/1Password "$XDG_CONFIG_HOME" 1Password
   ../.dotfiles/atuin     "$XDG_CONFIG_HOME" atuin
@@ -210,7 +210,6 @@ symlinks=(
   ../.dotfiles/mycli     "$XDG_CONFIG_HOME" mycli
   ../.dotfiles/nvim      "$XDG_CONFIG_HOME" nvim
   ../.dotfiles/ssh       "$XDG_CONFIG_HOME" ssh
-  ../.dotfiles/task      "$XDG_CONFIG_HOME" task
   ../.dotfiles/tmux      "$XDG_CONFIG_HOME" tmux
   ../.dotfiles/wezterm   "$XDG_CONFIG_HOME" wezterm
   ../.dotfiles/yazi      "$XDG_CONFIG_HOME" yazi
@@ -233,7 +232,7 @@ symlinks=(
 # Safely create links - skips over broken paths
 for ((i=0; i<${#symlinks[@]}; i+=3)); do symlink "${symlinks[i]}" "${symlinks[i+1]}" "${symlinks[i+2]}"; done
 
-((step++)); echo "󰓒 [$step/11] CONFIGURE MACOS OPTIONS 󰓒"
+((step++)); echo "󰓒 [$step/12] CONFIGURE MACOS OPTIONS 󰓒"
 num=0
 
 ((num++)); echo "opt${num}: Change default screenshots location to ~/Pictures/screenshots/"
@@ -242,6 +241,9 @@ defaults write com.apple.screencapture location -string "$HOME/Pictures/screensh
 
 ((num++)); echo "opt${num}: Speed up dock animation"
 defaults write com.apple.dock autohide-delay -float 0.1
+
+((num++)); echo "opt${num}: Speed up dock animation"
+defaults write com.apple.dock autohide -bool true
 
 ((num++)); echo "opt${num}: Remove dock autohide animation"
 defaults write com.apple.dock autohide-time-modifier -int 0
@@ -264,7 +266,9 @@ defaults write com.apple.finder AppleShowAllFiles -bool true
 ((num++)); echo "opt${num}: Disable file extension change warning"
 defaults write com.apple.finder FXEnableExtensionChangeWarning -bool false
 
-((step++)); echo "󰓒 [$step/11] CONFIGURE GIT AND GITHUB CLI 󰓒"
+killall Dock
+
+((step++)); echo "󰓒 [$step/12] CONFIGURE GIT AND GITHUB CLI 󰓒"
 
 # Update git credentials
 git config --global user.name       "$GIT_NAME"
@@ -284,7 +288,7 @@ perl -pi -e "s/vault = \"Private\"/vault = \"$OP_VAULT\"/g" "$XDG_CONFIG_HOME/1P
 # Authenticate GitHub CLI
 gh auth login
 
-((step++)); echo "󰓒 [$step/11] SETUP ATUIN SYNC 󰓒"
+((step++)); echo "󰓒 [$step/12] SETUP ATUIN SYNC 󰓒"
 
 # Create Atuin Sync login
 op item get "$ATUIN_OP_TITLE" --vault "$OP_VAULT" &>/dev/null || op item create \
@@ -308,12 +312,12 @@ atuin sync
 # Update Atuin Sync with generated key
 op item edit "$ATUIN_OP_TITLE" "key=$(atuin key)"
 
-((step++)); echo "󰓒 [$step/11] LOAD BAT THEMES 󰓒"
+((step++)); echo "󰓒 [$step/12] LOAD BAT THEMES 󰓒"
 
-# Need to run rebuild bat cache data any time theme folder changes
+# Rebuild bat cache any time theme folder changes
 bat cache --build
 
-((step++)); echo "󰓒 [$step/11] SETUP TOUCHID SUDO 󰓒"
+((step++)); echo "󰓒 [$step/12] SETUP TOUCHID SUDO 󰓒"
 
 # Ensure touchid possible in interactive mode or tmux
 echo "# Authenticate with Touch ID - even in tmux
@@ -323,7 +327,7 @@ auth  sufficient  pam_tid.so" | sudo tee /etc/pam.d/sudo_local >/dev/null
 # Show changes to sudo_local
 bat /etc/pam.d/sudo_local
 
-((step++)); echo "󰓒 [$step/11] DOWNLOAD AND INSTALL PYTHON 󰓒"
+((step++)); echo "󰓒 [$step/12] DOWNLOAD AND INSTALL PYTHON 󰓒"
 
 # Downloads & installs Python - cleans installer after finishing
 if [ ! -d "$PYTHON_APP_PATH" ]; then
@@ -340,9 +344,13 @@ else
 fi
 
 # Hide tty login message for iterm
-((step++)); echo "󰓒 [$step/11] SURPRESS ITERM2 LOGIN 󰓒"
+((step++)); echo "󰓒 [$step/12] SURPRESS ITERM2 LOGIN 󰓒"
 echo 'Created ~/.hushlogin'
 touch "$HOME/.hushlogin" 
+
+((step++)); echo "󰓒 [$step/12] CHANGE SHELL 󰓒"
+for shell in bash zsh; do echo "$(brew --prefix)/bin/$shell" | sudo tee -a /etc/shells; done
+chsh -s "$(brew --prefix)/bin/zsh"
 
 cd
 

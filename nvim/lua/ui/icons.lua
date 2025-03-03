@@ -6,12 +6,18 @@ return {
   virtualcircle = '',
 
   -- general
-  gear = '',
-  file = '',
-  download = ' ',
+  bell = ' ',
   checkmark = ' ',
   dotted_circle = '󱥸 ',
-  bell = ' ',
+  download = ' ',
+  file = '',
+  folder = '',
+  gear = '',
+  branch = '',
+  cursor = '󰆾',
+  vim = '',
+  up = '',
+  down = '',
 
   -- lsp diagnostics
   error = '󰯈',
