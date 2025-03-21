@@ -1,9 +1,9 @@
 [init]
 	defaultBranch = main
 [user]
-	name = Vivek Jha
-	email = vivek.x.jha@gmail.com
-	signingkey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIK9fFcycueFLoRagrZwmLRmWiA3KDOjnsXlz6cHasozv
+	name = Ari Ganapathi
+	email = ariganapathi7@gmail.com
+	signingkey = ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICWIS35ryEKaOq1XmBr9NoDlS9TeWcb10YsrLJ3m35e5
 [gpg]
 	format = ssh
 [gpg "ssh"]
