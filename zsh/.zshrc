@@ -1,11 +1,13 @@
 # https://zsh.sourceforge.io/
 
 # Instant Prompt 
+# shellcheck disable=SC2296 source=/dev/null
 [[ -r "$XDG_CACHE_HOME/p10k-instant-prompt-${(%):-%n}.zsh" ]] && source "$XDG_CACHE_HOME/p10k-instant-prompt-${(%):-%n}.zsh"
 
 # History Opts
 HISTFILE="$XDG_STATE_HOME/zsh/.zsh_history"
 HISTSIZE=12000
+# shellcheck disable=SC2034
 SAVEHIST=10000
 
 setopt extendedhistory histexpiredupsfirst histignoredups histignorespace incappendhistory sharehistory
@@ -17,10 +19,12 @@ setopt autocd interactivecomments
 source "$ZDOTDIR/.zprofile"
 
 # Plugin Manager
+# shellcheck disable=SC1091
 source "$XDG_DATA_HOME/zap/zap.zsh"
 
 # Prompt
-plug romkatv/powerlevel10k && source "$ZDOTDIR/themes/.p10k-sourdiesel.zsh"
+# shellcheck disable=SC1094
+plug romkatv/powerlevel10k && source "$ZDOTDIR/.p10k.zsh"
 
 # Functions
 for fn in "$ZDOTDIR/funcs"/*; do autoload -Uz "$(basename "$fn")"; done
@@ -29,7 +33,9 @@ for fn in "$ZDOTDIR/funcs"/*; do autoload -Uz "$(basename "$fn")"; done
 source "$XDG_CONFIG_HOME/op/plugins.sh"
 
 # Auto-plugins
-plug marlonrichert/zsh-autocomplete; plug hlissner/zsh-autopair; plug zsh-users/zsh-autosuggestions
+plug marlonrichert/zsh-autocomplete
+plug hlissner/zsh-autopair
+plug zsh-users/zsh-autosuggestions
 
 # Completions
 plug zsh-users/zsh-completions && source "$XDG_CONFIG_HOME/zsh/completions"
@@ -41,9 +47,10 @@ plug zsh-users/zsh-syntax-highlighting && source "$ZDOTDIR/syntax-highlighting"
 source "$ZDOTDIR/aliases"
 
 # Color ls, tree, eza
-eval "$(gdircolors "$XDG_CONFIG_HOME"/eza/.dircolors || dircolors "$XDG_CONFIG_HOME"/eza/.dircolors)"
+eval "$(dircolors "$XDG_CONFIG_HOME/eza/.dircolors")"
 
 # Fuzzy Finder
+# shellcheck source=/dev/null
 source <(fzf --zsh) && source "$XDG_CONFIG_HOME/fzf/config.sh"
 
 # History TUI

@@ -1,13 +1,7 @@
 vim.g.mapleader = ' '
 vim.g.maplocalleader = '\\'
 
--- Load annotations
-require 'types'
-
---- @type Utils Load configuration functions
-local utl = require 'configs.utils'
-
--- @type string Lazy install path
+--- @type string Set path to lazy repo
 local lazypath = vim.fn.stdpath 'data' .. '/lazy/lazy.nvim'
 
 -- Bootstrap lazy if not installed
@@ -39,6 +33,9 @@ vim.opt.rtp:prepend(lazypath)
 -- Load plugins
 require('lazy').setup(require 'configs.lazy')
 
+-- Load LSP
+require 'configs.lsp'
+
 -- Load options
 require 'configs.options'
 
@@ -46,12 +43,13 @@ require 'configs.options'
 require('ui.buffers').setup()
 
 -- Load highlights and colorscheme
-require('colors.highlights').setup { colorscheme = 'sourdiesel' }
+require('configs.highlights').setup()
 
 -- Load statusline
 vim.o.statusline = "%!v:lua.require('ui.statusline').setup()"
 
--- Load & schedule commands and key mappings
-utl:load 'usercmds'
-utl:load 'autocmds'
-utl:load 'mappings'
+-- Load & schedule auto commands
+require 'configs.autocmds'
+
+-- Schedule keymaps
+vim.schedule(function() require 'configs.keymaps' end)

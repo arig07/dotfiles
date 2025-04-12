@@ -28,6 +28,9 @@ alias l='eza --all --long --git --icons=always --group-directories-first'
 # Print all directory items in colored tree format excluding git info
 alias tree='tree -aCI ".git|.github"'
 
+# On Macos merge namespaces of dircolors and gdircolors
+[[ $(uname) == Darwin ]] && alias dircolors='gdircolors'
+
 # Deletion
 alias delete-ds-store='fd -HI .DS_Store / -x rm -f {} &>/dev/null'
 
@@ -81,19 +84,11 @@ alias reload-tmux='tmux kill-server &>/dev/null; tmux attach &>/dev/null || tmux
 alias czc='cz commit'
 
 # Git
-alias ga='git add'
 alias gaa='git add --all'
-alias gb='git branch'
-alias gcl='git clone --recurse-submodules'
-alias gco='git checkout'
 alias gd='git diff'
 alias gds='git diff --staged'
-alias gl='git pull'
 alias glg='git log --graph --date=format:"%b-%d-%Y" --pretty="$GIT_PRETTY"'
-alias gmg='git merge'
-alias gmv='git mv'
 alias gp='git push'
-alias grm='git rm'
 alias grs='git restore'
 alias grst='git restore --staged'
 alias grv='git remote --verbose'

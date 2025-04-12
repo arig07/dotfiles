@@ -3,7 +3,7 @@ local icn = require 'ui.icons'
 -- https://github.com/williamboman/mason.nvim
 return {
   'williamboman/mason.nvim',
-  cmd = { 'Mason', 'MasonInstall', 'MasonInstallAll', 'MasonUpdate' },
+  cmd = { 'Mason', 'MasonInstall', 'MasonUninstall', 'MasonUninstallAll', 'MasonUpdate', 'MasonLog' },
   opts = {
     PATH = 'skip',
     ui = {
