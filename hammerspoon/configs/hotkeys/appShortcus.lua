@@ -3,6 +3,13 @@ local utl = require 'utils'
 return {
   {
     key = 'a',
+    desc = 'Toggle Anki',
+    mods = { 'ctrl', 'alt', 'cmd' },
+    command = function() utl.toggleApp 'Arc' end,
+  },
+
+  {
+    key = 'b',
     desc = 'Toggle Arc Browser',
     mods = { 'ctrl', 'alt', 'cmd' },
     command = function() utl.toggleApp 'Arc' end,
@@ -23,10 +30,24 @@ return {
   },
 
   {
-    key = 'g',
-    desc = 'Toggle Gmail Client',
+    key = 'e',
+    desc = 'Toggle Notion Calendar',
     mods = { 'ctrl', 'alt', 'cmd' },
-    command = function() utl.toggleApp 'Mimestream' end,
+    command = function() utl.toggleApp 'Notion Calendar' end,
+  },
+
+  {
+    key = 'f',
+    desc = 'Toggle Messenger',
+    mods = { 'ctrl', 'alt', 'cmd' },
+    command = function() utl.toggleApp 'Messenger' end,
+  },
+
+  {
+    key = 'g',
+    desc = 'Toggle Google Chrome',
+    mods = { 'ctrl', 'alt', 'cmd' },
+    command = function() utl.toggleApp 'Google Chrome' end,
   },
 
   {
@@ -45,9 +66,9 @@ return {
 
   {
     key = 'n',
-    desc = 'Toggle Notion Calendar',
+    desc = 'Toggle Notes',
     mods = { 'ctrl', 'alt', 'cmd' },
-    command = function() utl.toggleApp 'Notion Calendar' end,
+    command = function() utl.toggleApp 'Notes' end,
   },
 
   {
@@ -55,6 +76,13 @@ return {
     desc = 'Toggle Photos',
     mods = { 'ctrl', 'alt', 'cmd' },
     command = function() utl.toggleApp 'Photos' end,
+  },
+
+  {
+    key = 'r',
+    desc = 'Toggle Reminders',
+    mods = { 'ctrl', 'alt', 'cmd' },
+    command = function() utl.toggleApp 'Reminders' end,
   },
 
   {

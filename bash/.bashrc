@@ -1,46 +1,63 @@
 # https://www.gnu.org/software/bash/
-
-# Load shell environment variables
 # shellcheck disable=SC1091
+
+# Environment
 source "$HOME/.zshenv"
 
-# Bash Line Editor
+# Plugin Manager
 [[ $- == *i* ]] && source "$XDG_DATA_HOME/blesh/ble.sh" --noattach
 
-# History Opts
+# History
 export HISTFILE="$XDG_STATE_HOME/bash/.bash_history"
 export HISTTIMEFORMAT="%F %T "
 
-# Bash Opts
+# Options
 shopt -s autocd
 set -o vi
 
 # PATH + Secrets
-source "$XDG_CONFIG_HOME/bash/.path"
+source "$ZDOTDIR/.zprofile"
 
 # Prompt
 eval "$(starship init bash)"
 
-# Authenticate github cli with 1password
-source "$XDG_CONFIG_HOME/op/plugins.sh"
+# Functions
+while IFS= read -r -d '' path; do
+  fn="${path##*/}"
+
+  # skip hidden files
+  [[ $fn == .* ]] && continue
+
+  # handle any funcs that use cd
+  [[ $fn == take ]] && eval "$fn() { mkdir -p \"\$1\" && cd \"\$1\"; }" && continue
+
+  # load func as zsh interactive commands
+  eval "$fn() { zsh -ic '$fn \"\$@\"' $fn \"\$@\"; }"
+done < <(find "$ZDOTDIR/funcs" -type f -maxdepth 1 -print0)
 
 # Aliases
-source "$XDG_CONFIG_HOME/bash/aliases"
+source "$ZDOTDIR/aliases"
 
 # Color ls, tree, eza
-eval "$(dircolors "$XDG_CONFIG_HOME/eza/.dircolors")"
+eval "$($(command -v dircolors || command -v gdircolors) "$XDG_CONFIG_HOME/eza/.dircolors")"
 
-# Fuzzy Finder
+# Fuzzy finder
 eval "$(fzf --bash)" && source "$XDG_CONFIG_HOME/fzf/config.sh"
 
-# History TUI
-eval "$(atuin init bash)"
+# Command history
+eval "$(atuin init bash)" && {
+  bind -m vi-command '"\C-r": "i__atuin_history\n"'
+  bind -m vi-command '"\e[A": "i__atuin_history --shell-up-key-binding\n"'
+  bind -m vi-command '"\eOA": "i__atuin_history --shell-up-key-binding\n"'
+}
 
-# Directory Jumper
-eval "$(zoxide init bash --cmd j)"
+# Directory jumper
+eval "$(zoxide init bash --cmd j)" && bind '"\C-p": "ji\n"'
 
 # Keybindings
-source "$XDG_CONFIG_HOME/bash/mappings"
+bind -x '"\C-o": exec '"$(which bash)"
+bind -x '"\el": clear'
+bind -x '"\C-n": '"$EDITOR"' -S Session.vim'
 
-# Auto-plugins + Completions + Syntax-highlighting
+# Plugins
 [[ ! ${BLE_VERSION-} ]] || ble-attach

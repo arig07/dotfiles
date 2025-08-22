@@ -1,4 +1,4 @@
--- https://cmp.saghen.dev/installation.html
+-- https://cmp.saghen.dev/installation#lazy-nvim
 return {
   'saghen/blink.cmp',
   version = '1.*',
@@ -6,8 +6,8 @@ return {
     'L3MON4D3/LuaSnip',
     version = 'v2.*',
     opts = function()
-      for _, style in ipairs { 'from_vscode', 'from_snipmate', 'from_lua' } do
-        require('luasnip.loaders.' .. style).lazy_load()
+      for _, style in ipairs { 'vscode', 'snipmate', 'lua' } do
+        require('luasnip.loaders.from_' .. style).lazy_load()
       end
 
       return { history = true, updateevents = 'TextChanged,TextChangedI' }

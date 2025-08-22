@@ -28,47 +28,40 @@ alias l='eza --all --long --git --icons=always --group-directories-first'
 # Print all directory items in colored tree format excluding git info
 alias tree='tree -aCI ".git|.github"'
 
-# On Macos merge namespaces of dircolors and gdircolors
-[[ $(uname) == Darwin ]] && alias dircolors='gdircolors'
-
-# Deletion
-alias delete-ds-store='fd -HI .DS_Store / -x rm -f {} &>/dev/null'
-
 # Fuzzy search man pages
 alias docs='compgen -c | fzf | xargs man'
 
 # -------------------------------- List Long Functions ---------------------------------------
 
 # Outputs System info
-alias list-sysinfo='system_profiler SPSoftwareDataType SPHardwareDataType'
+alias list-path='tr ":" "\n" <<< "$PATH"'
 alias list-shells='tail -n +5 /etc/shells'
+alias list-sysinfo='system_profiler SPSoftwareDataType SPHardwareDataType'
 alias list-users='dscl . list /Users | grep -v "^_"'
+alias list-real-users='dscl . list /Users UniqueID | awk '\''$2 >= 501 { print $1 }'\'''
 
 # Outputs Homebrew package info
-alias list-deps='brew deps --tree --installed'
 alias list-apps='brew list --cask | xargs -n1'
 alias list-cmds='brew list --formula | xargs -n1'
+alias list-deps='brew deps --tree --installed'
 
 # Outputs Aliases & Environment Variables
 alias list-alias='alias | sort'
 alias list-vars='env | sort'
 
+# Outputs Zsh options + functions + FPATH + syntax-highlighting
 [[ -n $ZSH_VERSION ]] && {
-
-  # Outputs PATH and FPATH
-  alias list-path='print -l "${path[@]}"'
-  alias list-fpath='print -l ${fpath[@]}'
-
-  # Outputs Shell functions and setings
-  alias list-funcs='print -l ${(ok)functions[(I)[^_]*]} | sort'
   alias list-opts='setopt'
-
-  # Outputs Terminal colors
-  alias list-256='for i in {0..255}; do print -Pn "%K{$i}  %k%F{$i}${(l:3::0:)i}%f " ${${(M)$((i%6)):#3}:+"\n"}; done'
+  alias list-funcs='print -l ${(ok)functions[(I)[^_]*]} | sort'
+  alias list-fpath='print -l ${fpath[@]}'
+  alias list-highlighter='print -raC2 - "${(@kvq+)ZSH_HIGHLIGHT_STYLES}" | sort'
 }
 
-# Outputs syntax-highlighting info
-[[ -n $ZSH_HIGHLIGHT_STYLES ]] && alias list-highlighter='print -raC2 - "${(@kvq+)ZSH_HIGHLIGHT_STYLES}" | sort'
+# Outputs Bash options + functions
+[[ -n $BASH_VERSION ]] && {
+  alias list-opts='shopt -p'
+  alias list-funcs='declare -F | cut -d " " -f3 | grep -v "/"'
+}
 
 # -------------------------------- Workspace Management ---------------------------------------
 
@@ -98,8 +91,15 @@ alias gsw='git branch --format="%(refname:short)" | fzf --header "git switch" --
 
 # -------------------------------- CLI tools ---------------------------------------
 
+# 1Password CLI authenticator
+alias gh="op plugin run -- gh"
+
 # MySQL launcher
-alias mycli='mycli --myclirc "$XDG_CONFIG_HOME/mycli/config"'
+alias mycli-dev='mycli --myclirc "$XDG_CONFIG_HOME/mycli/config" -u mubuntu -p"$(op item get '\''MySQL User: mubuntu'\'' --vault '\''Private'\'' --field '\''password'\'' --reveal)"'
+alias mysql-dev='mysql -u mubuntu -p"$(op item get '\''MySQL User: mubuntu'\'' --vault '\''Private'\'' --field '\''password'\'' --reveal)"'
+
+alias mycli-root='mycli --myclirc "$XDG_CONFIG_HOME/mycli/config" -u root -p"$(op item get '\''MySQL Root'\'' --vault '\''Private'\'' --field '\''password'\'' --reveal)"'
+alias mysql-root='mysql -u root -p"$(op item get '\''MySQL Root'\'' --vault '\''Private'\'' --field '\''password'\'' --reveal)"'
 
 # Print weather data
 alias weather='curl wttr.in'

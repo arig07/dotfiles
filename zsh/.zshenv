@@ -10,8 +10,7 @@ export ZAP_GIT_PREFIX='git@github.com:'
 export SHELL_SESSIONS_DISABLE=1
 
 # Set default editor
-export EDITOR=vim
-[[ -f $XDG_CONFIG_HOME/nvim/init.lua || -f $XDG_CONFIG_HOME/nvim/init.vim ]] && export EDITOR=nvim
+export EDITOR=nvim
 
 # Set graphical editor
 export VISUAL="$EDITOR"
@@ -22,9 +21,6 @@ export VISUAL="$EDITOR"
   export MANPAGER="sh -c 'col -bx | bat -pl man --paging=always --theme=sourdiesel'"
 }
 
-# Supress homebrew hints
-export HOMEBREW_NO_ENV_HINTS=1
-
 # TMUX
 export TMUX_PLUGIN_MANAGER_PATH="$XDG_DATA_HOME/tmux/plugins"
 export TMUX_FZF_LAUNCH_KEY='f'
@@ -32,7 +28,7 @@ export TMUX_FZF_LAUNCH_KEY='f'
 # Zoxide
 export _ZO_DATA_DIR="$XDG_DATA_HOME/zoxide"
 
-# History 
+# History
 export LESSHISTFILE="$XDG_STATE_HOME/less/.less_history"
 export MYSQL_HISTFILE="$XDG_STATE_HOME/mysql/.mysql_history"
 export MYCLI_HISTFILE="$XDG_STATE_HOME/mycli/.mycli_history"

@@ -35,7 +35,6 @@ M.setup = function(opts)
       col = 0.25,
       width = 0.5,
       height = 0.4,
-      border = 'single',
     }
 
     local newopts = vim.tbl_deep_extend('force', default_float_opts, opts.float_opts or {})
@@ -97,7 +96,7 @@ M.open = function(opts)
   M.setup(opts)
   M.save(opts.buf, opts)
 
-  if not buf_exists then fn.termopen(cmd, opts.termopen_opts or { detach = false }) end
+  if not buf_exists then api.nvim_call_function('termopen', { cmd, opts.termopen_opts or { detach = false } }) end
 
   g.nvhterm = opts.pos == 'sp'
   g.nvvterm = opts.pos == 'vsp'
