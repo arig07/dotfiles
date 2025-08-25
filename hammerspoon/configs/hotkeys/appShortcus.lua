@@ -10,9 +10,9 @@ return {
 
   {
     key = 'b',
-    desc = 'Toggle Arc Browser',
+    desc = 'Toggle Google Chrome',
     mods = { 'ctrl', 'alt', 'cmd' },
-    command = function() utl.toggleApp 'Arc' end,
+    command = function() utl.toggleApp 'Google Chrome' end,
   },
 
   {
@@ -101,9 +101,9 @@ return {
 
   {
     key = 'v',
-    desc = 'Toggle VLC',
+    desc = 'Visual Studio Code',
     mods = { 'ctrl', 'alt', 'cmd' },
-    command = function() utl.toggleApp 'VLC' end,
+    command = function() utl.toggleApp 'Visual Studio Code' end,
   },
 
   {
