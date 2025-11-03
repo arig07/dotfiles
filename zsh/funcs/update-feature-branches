@@ -3,20 +3,33 @@
 local default=main
 local branches=("$@")
 
-# Dynamically fetch feature branches if no arguments are provided
-[[ $# -eq 0 ]] && branches=("${(@f)$(git branch --format='%(refname:short)' | grep '^feature/')}")
+# Dynamically fetch feature branches if no arguments are passed
+if [[ $# -eq 0 ]]; then
+  branches=()
+  while IFS= read -r b; do
+    [[ -n $b ]] && branches+=("$b")
+  done < <(git branch --format='%(refname:short)' | grep '^feature/')
+fi
 
-for branch in "${branches[@]}"; do
-  # Check if branch exists
-  git branch --format='%(refname:short)' | grep -Fxq "$branch" || { printf "${RED}  '%s' not found${RESET} - run ${GREEN}'git branch'${RESET} to show available branches\n" "$branch"; continue; }
+if [[ -z ${branches[1]} ]]; then
+  printf "${BRIGHTYELLOW}[WARN] no feature branches updated${RESET}\n"
+  printf "${BRIGHTBLUE}[INFO] run ${GREEN}\`git branch\`${BRIGHTBLUE} to show available branches\n"
+else
+  for branch in "${branches[@]}"; do
+    # Check if branch exists
+    if ! git branch --format='%(refname:short)' | grep -Fxq "$branch"; then
+      printf "${BRIGHTRED}[ERROR] '%s' not found${RESET}\n" "$branch"
+      continue
+    fi
 
-  # Perfom merge
-  git switch "$branch" &>/dev/null
-  git merge "$default" &>/dev/null
+    # Perform merge
+    git switch "$branch" &>/dev/null
+    git merge "$default" &>/dev/null
 
-  # Print success message after switching
-  printf "${GREEN}  ${RESET}${CYAN}%s${RESET} -> ${MAGENTA}${default}${RESET}\n" "$branch"
-done
+    # Print success message
+    printf "${GREEN}✔ ${RESET}${CYAN}%s${RESET} -> ${MAGENTA}${default}${RESET}\n" "$branch"
+  done
+fi
 
-# Return to main branch
+# Always return to main branch (once)
 git switch "$default" &>/dev/null

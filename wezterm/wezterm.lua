@@ -1,3 +1,36 @@
+--- Generate pallete table of hex values by parsing env color file
+--- * File must contain lines in this format: `export *_HEX="#rrggbb"`
+--- * key, value pairs look like: "cyan" = "#8ae7c5"
+---
+--- @param theme string -- Theme identifier (e.g. 'sourdiesel')
+--- @return table<string, string>
+local hexify = function(theme)
+  local thm_path = os.getenv 'HOME' .. '/.config/zsh/themes/' .. theme .. '.sh'
+
+  --- @type table<string, string>
+  local palette = {}
+
+  --- @type file* -- Opened file handle
+  local f = assert(io.open(thm_path, 'r'), 'Failed to open ' .. thm_path)
+
+  for line in f:lines() do
+    --- @type string?, string? -- Extracted color name and hex code from line
+    local color, hex = line:match '^%s*export%s+([A-Z_]+_HEX)%s*=%s*[\'"]?(#%x%x%x%x%x%x)[\'"]?'
+
+    if color and hex then
+      -- strip the _HEX suffix and lowercase the key
+      color = color:match('^(.-)_HEX$'):lower()
+      palette[color] = hex:lower()
+    end
+  end
+
+  f:close()
+  return palette
+end
+
+--- @type table<string, string> -- Palette of colors
+local thm = hexify 'sourdiesel'
+
 -- https://wezterm.org/config/files.html?h=config
 local wezterm = require 'wezterm'
 local config = wezterm.config_builder() or {}
@@ -5,17 +38,37 @@ local config = wezterm.config_builder() or {}
 -- https://wezterm.org/config/appearance.html#defining-your-own-colors
 config.bold_brightens_ansi_colors = false
 config.colors = {
-  ansi = { '#cccccc', '#ffc7c7', '#ceffc9', '#fdf7cd', '#c4effa', '#eccef0', '#8ae7c5', '#f4f3f2' },
-  background = '#212030',
-  brights = { '#5c617d', '#f096b7', '#d2fd9d', '#f3b175', '#80d7fe', '#c9ccfb', '#47e7b1', '#ffffff' },
-  compose_cursor = '#f2cdcd',
-  cursor_bg = '#cdd6f4',
-  cursor_border = '#f4f3f2',
-  cursor_fg = '#313244',
-  foreground = '#f4f3f2',
-  selection_bg = '#5c617d',
-  selection_fg = '#f4f3f2',
-  split = '#5c617d',
+  ansi = {
+    thm.black,
+    thm.red,
+    thm.green,
+    thm.yellow,
+    thm.blue,
+    thm.magenta,
+    thm.cyan,
+    thm.white,
+  },
+
+  brights = {
+    thm.brightblack,
+    thm.brightred,
+    thm.brightgreen,
+    thm.brightyellow,
+    thm.brightblue,
+    thm.brightmagenta,
+    thm.brightcyan,
+    thm.brightwhite,
+  },
+
+  background = thm.wezterm_bg,
+  compose_cursor = thm.brightred,
+  cursor_bg = thm.brightmagenta,
+  cursor_border = thm.white,
+  cursor_fg = thm.grey,
+  foreground = thm.white,
+  selection_bg = thm.brightblack,
+  selection_fg = thm.white,
+  split = thm.brightblack,
 }
 
 -- Command Palette: activate with <Ctrl + Shift + p>
@@ -40,28 +93,22 @@ config.default_cursor_style = 'BlinkingBlock'
 
 -- Set window opts
 config.enable_tab_bar = false
-
 config.macos_window_background_blur = wezterm.target_triple:match 'apple%-darwin' and 60
-
 config.window_background_opacity = 0.9
-
 config.window_close_confirmation = 'NeverPrompt'
 config.window_decorations = 'RESIZE'
 
 -- https://wezterm.org/config/lua/config/window_frame.html?h=window_frame
-local border_thickness = 1
-local brightblack = config.colors.brights[1]
-
 config.window_frame = {
-  border_left_width = border_thickness,
-  border_right_width = border_thickness,
-  border_bottom_height = border_thickness,
-  border_top_height = border_thickness,
+  border_left_width = 1,
+  border_right_width = 1,
+  border_bottom_height = 1,
+  border_top_height = 1,
 
-  border_left_color = brightblack,
-  border_right_color = brightblack,
-  border_bottom_color = brightblack,
-  border_top_color = brightblack,
+  border_left_color = config.colors.brights[1],
+  border_right_color = config.colors.brights[1],
+  border_bottom_color = config.colors.brights[1],
+  border_top_color = config.colors.brights[1],
 }
 
 -- https://wezterm.org/config/lua/config/window_padding.html?h=window_padd

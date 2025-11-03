@@ -2,7 +2,7 @@
 
 # Check for 'fileicon' binary
 command -v fileicon &>/dev/null || {
-  printf "${BRIGHTRED}%s %s${BRIGHTYELLOW}%s${RESET}\n" "" "'fileicon' dependency not found" " - please install or check in \$PATH."
+  printf "${BRIGHTRED}%s %s${BRIGHTYELLOW}%s${RESET}\n" "✘" "'fileicon' dependency not found" " - please install or check in \$PATH."
   return 1
 }
 
@@ -10,24 +10,26 @@ table_width=60
 
 # Directory - Icons
 dir_icons=(
-  "/Applications/1Password.app" "$HOME/Pictures/icons/1password-macos.png"
+  "/Applications/1Password.app" "$HOME/Pictures/icons/1password.png"
   "/Applications/Anki.app" "$HOME/Pictures/icons/anki.png"
   "/Applications/ChatGPT.app" "$HOME/Pictures/icons/chatgpt.png"
-  "/Applications/Discord.app" "$HOME/Pictures/icons/discord-macos.png"
+  "/Applications/Discord.app" "$HOME/Pictures/icons/discord.png"
   "/Applications/Figma.app" "$HOME/Pictures/icons/figma.png"
   "/Applications/Firefox.app" "$HOME/Pictures/icons/firefox.png"
-  "/Applications/Google Chrome.app" "$HOME/Pictures/icons/google-chrome.png"
+  "/Applications/Hammerspoon.app" "$HOME/Pictures/icons/hammerspoon.png"
   "/Applications/iTerm.app" "$HOME/Pictures/icons/iterm2.png"
   "/Applications/iTermAI.app" "$HOME/Pictures/icons/ai-brain.png"
   "/Applications/KeyCastr.app" "$HOME/Pictures/icons/keycastr.png"
   "/Applications/Messenger.app" "$HOME/Pictures/icons/messenger.png"
   "/Applications/Neovim-iTerm.app" "$HOME/Pictures/icons/neovim-iterm.png"
   "/Applications/Neovim-Wezterm.app" "$HOME/Pictures/icons/neovim-wezterm.png"
+  "/Applications/Notion Calendar.app" "$HOME/Pictures/icons/notion-calendar.png"
   "/Applications/Postman.app" "$HOME/Pictures/icons/postman.png"
-  "/Applications/Slack.app" "$HOME/Pictures/icons/slack.png"
   "/Applications/Skim.app" "$HOME/Pictures/icons/skim.png"
+  "/Applications/Slack.app" "$HOME/Pictures/icons/slack.png"
   "/Applications/Spotify.app" "$HOME/Pictures/icons/spotify.png"
   "/Applications/Visual Studio Code.app" "$HOME/Pictures/icons/vscode.png"
+  "/Applications/WeChat.app" "$HOME/Pictures/icons/wechat.png"
   "/Applications/WezTerm.app" "$HOME/Pictures/icons/wezterm.png"
   "/Applications/WhatsApp.app" "$HOME/Pictures/icons/whatsapp.png"
   "$HOME/Developer" "$HOME/Pictures/icons/developer.png"
@@ -63,12 +65,12 @@ for ((i = 1; i < ${#dir_icons[@]}; i += 2)); do
   }
 
   fileicon set "$dir" "$icon" &>/dev/null || {
-    print_status "$RED" " "
+    print_status "$RED" "✘"
     ((fail++))
     continue
   }
 
-  print_status "$GREEN" " "
+  print_status "$GREEN" "✔"
   ((success++))
 done
 

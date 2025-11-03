@@ -1,18 +1,42 @@
-# Poject
+# =========================
+# Project Environment Files
+# =========================
+.env*
+
 karabiner/assets
 karabiner/automatic_backups
 
-# Databases
-*.sqlite3
-
-# Program Settings
-.env
-*.sock
+# =========================
+# System Files
+# =========================
 .DS_Store
-*.code-workspace
-*__pycache__
+Thumbs.db
+/Icon[^M]
 
-# Swap
+# =========================
+# Editor / IDE Settings
+# =========================
+Session.vim
+Sessionx.vim
+.vscode/
+.idea/
+*.code-workspace
+
+# =========================
+# Archives
+# =========================
+*.zip
+*.tar
+*.tar.gz
+
+# =========================
+# Runtime Sockets
+# =========================
+*.sock
+
+# =========================
+# Swap Files
+# =========================
 [._]*.s[a-v][a-z]
 !*.svg
 [._]*.sw[a-p]
@@ -20,23 +44,16 @@ karabiner/automatic_backups
 [._]ss[a-gi-z]
 [._]sw[a-p]
 
-# Session
-Session.vim
-Sessionx.vim
-
-# Temporary
+# =========================
+# Temporary Files
+# =========================
 .netrwhist
 *.bak
 *~
-
-# Logs
-*.log
-
-# Auto-generated tag files
-tags
-
-# Persistent undo
 [._]*.un~
 
-# Folder icon
-/Icon[^M]
+# =========================
+# Logs & Tags
+# =========================
+*.log
+tags._]*.un~

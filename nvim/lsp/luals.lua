@@ -1,31 +1,38 @@
+local dedup_paths = function(paths)
+  local out, seen = {}, {}
+  for _, p in ipairs(paths) do
+    local rp = (vim.uv or vim.loop).fs_realpath(p) or p
+    if not seen[rp] then
+      seen[rp] = true
+      table.insert(out, rp)
+    end
+  end
+  return out
+end
+
+local plugin_libraries = function()
+  local libs = {}
+
+  -- 1) Always include Neovim's stdlib
+  if vim.env.VIMRUNTIME then table.insert(libs, vim.env.VIMRUNTIME) end
+
+  -- 2) Add every runtimepath entry that has a `lua/` dir (i.e., plugins)
+  local cfg_root = vim.fn.stdpath 'config' -- avoid re-adding your config root
+  for _, rtp in ipairs(vim.opt.rtp:get()) do
+    if rtp ~= cfg_root then
+      local lua_dir = rtp .. '/lua'
+      local st = (vim.uv or vim.loop).fs_stat(lua_dir)
+      if st and st.type == 'directory' then table.insert(libs, lua_dir) end
+    end
+  end
+
+  return dedup_paths(libs)
+end
+
 return {
   cmd = { 'lua-language-server' },
   filetypes = { 'lua' },
-  root_markers = { '.luarc.json', '.luarc.jsonc' },
+  root_markers = { { '.luarc.json', '.luarc.jsonc' }, '.git' },
 
-  -- https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json
-  settings = {
-    Lua = {
-      diagnostics = {
-        globals = { 'vim', 'hs' },
-      },
-
-      runtime = {
-        version = 'LuaJIT',
-      },
-
-      workspace = {
-        library = {
-          vim.fn.stdpath 'config' .. '/lua',
-          vim.fn.expand '$VIMRUNTIME/lua',
-          vim.fn.expand '$VIMRUNTIME/lua/vim/lsp',
-          vim.fn.stdpath 'data' .. '/lazy/lazy.nvim/lua/lazy',
-          '${3rd}/luv/library',
-          os.getenv 'XDG_CONFIG_HOME' .. '/hammerspoon/configs',
-        },
-        maxPreload = 100000,
-        preloadFileSize = 10000,
-      },
-    },
-  },
+  settings = { Lua = { workspace = { library = plugin_libraries() } } },
 }

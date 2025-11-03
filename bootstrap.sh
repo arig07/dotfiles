@@ -2,377 +2,1470 @@
 
 clear
 
-# Set color vars
-RED='\e[0;31m'
-YELLOW='\e[0;33m'
-CYAN='\e[0;36m'
-WHITE='\e[0;37m'
-PURPLE='\e[0;95m'
+# -------------------------------------- COLORS + ICON -------------------------------------
 
-RESET='\e[0m'
+# BLACK=$'\e[0;30m'
+# RED=$'\e[0;31m'
+GREEN=$'\e[0;32m'
+YELLOW=$'\e[0;33m'
+# BLUE=$'\e[0;34m'
+MAGENTA=$'\e[0;35m'
+CYAN=$'\e[0;36m'
+WHITE=$'\e[0;37m'
 
-# Ensure Xcode installed
-command -v xcode-select &>/dev/null || {
-  echo -e "${RED}Please run: xcode-select --install${RESET}"
-  exit 1
+RESET=$'\e[0m'
+ICON='󰓒'
+
+# -------------------------------------- GLOBALS & DEFAULTS -------------------------------------
+
+STEP=0
+SUBSTEP=0
+TOTAL_STEPS=18
+
+DRY_RUN=0
+
+USE_1PASSWORD=0
+FORCE_1PASSWORD=0
+KEEP_SUDO_PID=''
+
+OS_TYPE=''
+DISTRO=''
+PKG_MGR=''
+
+GITHUB_RAW_BASE='https://raw.githubusercontent.com/vivek-x-jha/dotfiles/refs/heads/main'
+BREWFILE_DEFAULT="$GITHUB_RAW_BASE/Brewfile"
+APT_MANIFEST_DEFAULT="$HOME/.dotfiles/apt-packages.txt"
+DNF_MANIFEST_DEFAULT="$HOME/.dotfiles/dnf-packages.txt"
+APT_MANIFEST_URL_DEFAULT="$GITHUB_RAW_BASE/apt-packages.txt"
+DNF_MANIFEST_URL_DEFAULT="$GITHUB_RAW_BASE/dnf-packages.txt"
+DNF_CMD=''
+
+DEVELOPER_CLONE_ROOT="${DEVELOPER_CLONE_ROOT:-$HOME/Developer}"
+DEVELOPER_REPOS=(
+  vivek-x-jha/dcp
+  vivek-x-jha/notes
+  vivek-x-jha/nvim-dashboard
+  vivek-x-jha/neovim-macos-launcher
+  vivek-x-jha/nvim-sourdiesel
+  vivek-x-jha/nvim-statusline
+  vivek-x-jha/nvim-terminal
+)
+
+# -------------------------------------- HELPER FUNCTIONS -------------------------------------
+
+# [HF1] print standardized and colorized log messages
+# Usage: logg -i | -w | -e "message"
+logg() {
+  local opt="$1"
+  local level=''
+  local color=''
+
+  case "$opt" in
+  -i) level=INFO ;;
+  -w) level=WARN && color="$YELLOW" ;;
+  -e) level=ERROR && color="$MAGENTA" ;;
+  *) printf 'log: missing or invalid level flag\n' >&2 && return 1 ;;
+  esac
+
+  shift
+  printf '%b[%s] %s%b\n' "$color" "$level" "$*" "$RESET"
 }
 
-echo -e "${CYAN}󰓒 INSTALLATION START 󰓒${RESET}"
-echo -e "${CYAN}󰓒 [$((++step))/12] INSTALLING COMMANDS & APPS 󰓒${RESET}"
+# [HF2] print step progress message (supports main and substeps)
+# Usage: notify [-s] "message"
+notify() {
+  local minor=''
 
-# Install Homebrew
-echo -e "${CYAN}󰓒 [${step}.1/12] INSTALLING PACKAGE MANAGER 󰓒${RESET}"
-[[ -x /opt/homebrew/bin/brew || -x /usr/local/bin/brew ]] || /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv)"
-echo 'HOMEBREW INSTALLED!'
+  case "$1" in
+  -s) SUBSTEP=$((SUBSTEP + 1)) && minor=".$SUBSTEP" && shift ;;
+  *) STEP=$((STEP + 1)) && SUBSTEP=0 ;;
+  esac
 
-# Install all formulae and casks
-while true; do
-  read -rp "${CYAN}󰓒 [${step}.2/12] INSTALL PACKAGES & APPS FROM BREWFILE? (<Enter> TO SKIP): ${RESET}"
-  case $REPLY in
-  [Yy]*)
-    read -rp "${CYAN}󰓒 [${step}.2.1/12] ENTER BREWFILE PATH OR URL (<Enter> TO USE DEFAULT): ${RESET}" brewfile
-    [[ -z $brewfile ]] && brewfile='https://raw.githubusercontent.com/vivek-x-jha/dotfiles/refs/heads/main/Brewfile'
-    echo "USING BREWFILE: $brewfile"
+  printf '\n%s\n' "${GREEN}${ICON} [${STEP}${minor}/${TOTAL_STEPS}] $* ${ICON}${RESET}"
+}
 
-    # Expand ~ or $HOME if present
-    [[ $brewfile =~ ^~ ]] && brewfile="${HOME}${brewfile:1}"
-    brewfile="${brewfile/#\~/$HOME}"
+# [HF3] execute a command, honoring dry-run mode
+# Usage: run "command"
+run() {
+  local cmd="$1"
 
-    # Handle URLs
-    [[ $brewfile =~ ^https?:// ]] && {
-      curl -fsSL "$brewfile" | brew bundle --file=-
-      break
+  ((DRY_RUN)) && logg -i "[dry-run] $cmd" && return
+  eval "$cmd"
+}
+
+# [HF4] Convert paths under $HOME into a tilde-prefixed display string
+# Usage: pretty_path "/Users/me/.config"
+pretty_path() {
+  local path="$1"
+
+  [[ $path == "$HOME"* ]] && printf '~%s' "${path#"$HOME"}" && return
+  printf '%s' "$path"
+}
+
+# [HF5] ask a yes/no question with optional default
+# Usage: confirm "prompt" [default]
+confirm() {
+  local prompt="$1"
+  local default="${2:-}"
+  local suffix answer
+
+  case "$default" in
+  y | Y) suffix=" [${CYAN}Y${RESET}/n]" ;;
+  n | N) suffix=" [y/${CYAN}N${RESET}]" ;;
+  *) suffix=' [y/n]' ;;
+  esac
+
+  while true; do
+    read -rp ">>> $prompt$suffix: "
+
+    answer=${REPLY:-$default}
+
+    case "${answer,,}" in
+    y | yes) return 0 ;;
+    n | no) return 1 ;;
+    esac
+
+    logg -w 'Invalid input - please answer: <y,yes,n,no>'
+  done
+}
+
+# [HF6] run 1Password CLI commands when integration is enabled
+# Usage: safe_op_call <subcommand> [args...]
+safe_op_call() {
+  ((USE_1PASSWORD)) || return 1
+
+  command -v op &>/dev/null || {
+    logg -w '1Password CLI not installed. Skipping related action.'
+    return 1
+  }
+
+  local quoted_args=()
+  local cmd=op
+
+  for arg in "$@"; do
+    printf -v quoted_arg '%q' "$arg"
+    quoted_args+=("$quoted_arg")
+  done
+
+  [[ ${#quoted_args[@]} -gt 0 ]] && cmd+=" ${quoted_args[*]}"
+
+  run "$cmd"
+}
+
+# Determine OS and package-manager defaults
+# Usage: detect_platform
+detect_platform() {
+  case "$(uname -s)" in
+  Darwin)
+    OS_TYPE=macos
+    PKG_MGR=brew
+    DISTRO=macOS
+    ;;
+  Linux)
+    [[ -r /etc/os-release ]] || {
+      logg -e 'Unable to detect Linux distribution (missing /etc/os-release).'
+      exit 1
     }
 
-    # Check for local file existence after path expansion
-    [[ -f $brewfile ]] && {
-      brew bundle --file="$brewfile"
-      break
+    # shellcheck disable=SC1091
+    source /etc/os-release
+    DISTRO="${PRETTY_NAME:-${NAME:-Linux}}"
+
+    case "${ID_LIKE:-}$ID" in
+    *debian* | *ubuntu*)
+      OS_TYPE=linux
+      PKG_MGR=apt
+      ;;
+    *fedora* | *rhel* | *centos*)
+      OS_TYPE=linux
+      PKG_MGR=dnf
+      ;;
+    *) logg -e "Linux distribution '$DISTRO' is not yet supported." && exit 1 ;;
+    esac
+    ;;
+  *) logg -e "Unsupported operating system: $(uname -s)" && exit 1 ;;
+  esac
+
+  logg -i "TARGET PLATFORM: DISTRO=$DISTRO"
+  logg -i "PACKAGE MANAGER: PKG_MGR=${PKG_MGR}${RESET}"
+}
+
+# Ensure required package manager tooling is present
+# Usage: setup_package_manager
+setup_package_manager() {
+  [[ $PKG_MGR == brew ]] && {
+    notify -s 'Ensuring Homebrew is available'
+
+    local brew_cmd=''
+    brew_cmd="$(command -v brew 2>/dev/null)"
+
+    # run installer if homebrew executable not in $PATH
+    [[ -z $brew_cmd ]] && {
+      notify -s 'Installing Homebrew'
+
+      local brew_installer="/bin/bash -c \"\\\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
+      run "$brew_installer" 2>/dev/null
+
+      [[ $(uname -m) == arm64 ]] && brew_cmd=/opt/homebrew/bin/brew
+      [[ $(uname -m) == x86_64 ]] && brew_cmd=/usr/local/bin/brew
+
+      [[ -x $brew_cmd ]] || {
+        logg -e 'Homebrew failed to install - please check install instructions @ https://brew.sh/'
+        exit 1
+      }
     }
 
-    echo -e "${RED}[ERROR] INVALID PATH OR URL: ${YELLOW}$brewfile${RESET}"
-    break
-    ;;
-  '') break ;;
-  *) echo -e "${RED}[ERROR] INVALID INPUT! ${YELLOW}PLEASE ENTER 'y' OR <Enter> TO SKIP.${RESET}" ;;
-  esac
-done
+    # Ensure homebrew is in $PATH for current shell session
+    run "eval \"\$($brew_cmd shellenv 2>/dev/null)\""
+  }
 
-# Update Brewfile
-brew bundle dump --force --file="$HOME/.dotfiles/Brewfile"
+  [[ $PKG_MGR == dnf ]] && {
+    notify -s 'Ensuring dnf is available'
 
-# Run Homebrew utility functions
-while true; do
-  read -rp "${CYAN}󰓒 [${step}.3/12] CHECK HOMEBREW HEALTH? (<Enter> TO SKIP): ${RESET}"
-  case $REPLY in
-  [Yy]*)
-    brew cleanup
-    brew doctor
-    break
-    ;;
-  '') break ;;
-  *) echo -e "${RED}[ERROR] INVALID INPUT! ${YELLOW}PLEASE ENTER 'y' OR <Enter> TO SKIP.${RESET}" ;;
-  esac
-done
+    local dnf_cmd=''
+    dnf_cmd="$(command -v dnf 2>/dev/null)"
+    [[ -z $dnf_cmd ]] && dnf_cmd="$(command -v dnf5 2>/dev/null)"
 
-# Upgrade commands & applications managed by Homebrew
-while true; do
-  read -rp "${CYAN}󰓒 [${step}.4/12] UPDATE HOMEBREW COMMANDS & APPS? (<Enter> TO SKIP): ${RESET}"
-  case $REPLY in
-  [Yy]*)
-    brew upgrade
-    brew cu -af
-    break
-    ;;
-  '') break ;;
-  *) echo -e "${RED}[ERROR] INVALID INPUT! ${YELLOW}PLEASE ENTER 'y' OR <Enter> TO SKIP.${RESET}" ;;
-  esac
-done
+    [[ -n $dnf_cmd ]] || {
+      logg -e "Missing command 'dnf'. Install the Fedora package manager before continuing."
+      exit 1
+    }
 
-echo -e "${CYAN}󰓒 [$((++step))/12] SET ENVIRONMENT 󰓒${RESET}"
+    DNF_CMD="$dnf_cmd"
+  }
 
-# XDG directory structure
-export XDG_CONFIG_HOME="$HOME/.config"
-export XDG_CACHE_HOME="$HOME/.cache"
-export XDG_DATA_HOME="$HOME/.local/share"
-export XDG_STATE_HOME="$HOME/.local/state"
+  [[ $PKG_MGR == apt ]] && {
+    notify -s 'Ensuring apt is available'
+    command -v apt-get &>/dev/null || {
+      logg -e "Missing command 'apt-get'. Install via: sudo apt install apt"
+      exit 1
+    }
+  }
+}
 
-# Authenticate 1password-cli
-command -v op &>/dev/null && op signin
+# Install brew/apt package manifests and optional updates
+# Usage: install_package_sets
+install_package_sets() {
+  if [[ $PKG_MGR == brew ]]; then
+    if confirm 'Install packages & apps from Brewfile' 'Y'; then
+      notify -s 'Select Brewfile'
+      local brewfile
+      read -rp '>>> Enter Brewfile path or URL (<Enter> to use default): ' brewfile
+      [[ -z $brewfile ]] && brewfile="$BREWFILE_DEFAULT"
+      logg -i "Using Brewfile: $brewfile"
 
-while true; do
-  # Required
-  read -rp "${WHITE}Please enter your Git Username: ${RESET}" GIT_NAME
-  read -rp "${WHITE}Please enter your Git Email: ${RESET}" GIT_EMAIL
+      if [[ $brewfile =~ ^https?:// ]]; then
+        if ((DRY_RUN)); then
+          logg -i "[dry-run] curl -fsSL $brewfile | brew bundle --file=-"
+        else
+          curl -fsSL "$brewfile" | brew bundle --file=-
+        fi
+      else
+        [[ $brewfile =~ ^~ ]] && brewfile="${HOME}${brewfile:1}"
+        brewfile="${brewfile/#\~/$HOME}"
+        if [[ -f $brewfile ]]; then
+          if ((DRY_RUN)); then
+            logg -i "[dry-run] brew bundle --file=$brewfile"
+          else
+            brew bundle --file="$brewfile"
+          fi
+        else
+          logg -w "Invalid Brewfile path: $brewfile"
+        fi
+      fi
+    fi
 
-  # Optional
-  read -rp "${WHITE}1Password Vault name (<Enter> to set to 'Private'): ${RESET}"
-  OP_VAULT="${REPLY:-Private}"
+    notify -s 'Refresh Brewfile snapshot'
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] brew bundle dump --force --file=$HOME/.dotfiles/Brewfile"
+    else
+      brew bundle dump --force --file="$HOME/.dotfiles/Brewfile"
+    fi
 
-  OP_GIT_SIGNKEY="$(op item get 'GitHub Signing Key' --vault "$OP_VAULT" --field 'public key')" &>/dev/null
+    if confirm "Run brew cleanup & doctor" 'N'; then
+      notify -s 'Running brew maintenance'
+      ((DRY_RUN)) || brew cleanup
+      ((DRY_RUN)) || brew doctor
+    fi
 
-  read -rp "${WHITE}Git Signing Key (<Enter> to set to '${OP_GIT_SIGNKEY:0:18} ... ${OP_GIT_SIGNKEY: -10}'): ${RESET}"
-  GIT_SIGNINGKEY="${REPLY:-$OP_GIT_SIGNKEY}"
+    if confirm "Update brew formulae & casks" 'N'; then
+      notify -s 'Updating Homebrew packages'
+      ((DRY_RUN)) || brew upgrade
+      if command -v brew &>/dev/null && brew tap | grep -q '^buo/cask-upgrade$'; then
+        ((DRY_RUN)) || brew cu -af
+      fi
+    fi
+  elif [[ $PKG_MGR == dnf ]]; then
+    local dnf_exec="${DNF_CMD:-$(command -v dnf 2>/dev/null || command -v dnf5 2>/dev/null)}"
 
-  read -rp "${WHITE}GitHub User (<Enter> to set to '${GIT_EMAIL%@*}'): ${RESET}"
-  GITHUB_NAME="${REPLY:-${GIT_EMAIL%@*}}"
+    if [[ -z $dnf_exec ]]; then
+      logg -e 'dnf command not found after initialization.'
+      exit 1
+    fi
 
-  read -rp "${WHITE}1Password Atuin Sync Title (<Enter> to set to 'Atuin Sync'): ${RESET}"
-  ATUIN_OP_TITLE="${REPLY:-Atuin Sync}"
+    if confirm 'Upgrade Fedora packages' 'Y'; then
+      notify -s 'Upgrading system packages'
+      if ((DRY_RUN)); then
+        logg -i "[dry-run] sudo $dnf_exec upgrade --refresh -y"
+      else
+        run "sudo $dnf_exec upgrade --refresh -y"
+      fi
+    fi
 
-  read -rp "${WHITE}Atuin Username (<Enter> to set to '${GIT_EMAIL%@*}'): ${RESET}"
-  ATUIN_USERNAME="${REPLY:-${GIT_EMAIL%@*}}"
+    local dnf_manifest="$DNF_MANIFEST_DEFAULT"
+    local dnf_manifest_tmp=''
 
-  read -rp "${WHITE}Atuin Email (<Enter> to set to '$GIT_EMAIL'): ${RESET}"
-  ATUIN_EMAIL="${REPLY:-$GIT_EMAIL}"
+    if [[ ! -f $dnf_manifest && -n $DNF_MANIFEST_URL_DEFAULT ]]; then
+      dnf_manifest_tmp="$(mktemp)"
+      if ((DRY_RUN)); then
+        logg -i "[dry-run] curl -fsL $DNF_MANIFEST_URL_DEFAULT -o $dnf_manifest_tmp"
+      fi
 
-  read -rp "${WHITE}Media directory ~/\$MEDIA (<Enter> to skip): ${RESET}" MEDIA
+      if curl -fsL "$DNF_MANIFEST_URL_DEFAULT" -o "$dnf_manifest_tmp" 2>/dev/null; then
+        logg -i "Using remote dnf manifest: $DNF_MANIFEST_URL_DEFAULT"
+        dnf_manifest="$dnf_manifest_tmp"
+      else
+        logg -w "Failed to fetch dnf manifest from $DNF_MANIFEST_URL_DEFAULT"
+        rm -f "$dnf_manifest_tmp"
+        dnf_manifest_tmp=''
+      fi
+    fi
 
-  cat <<EOF
--------------- ENVIRONMENT ------------------
-XDG_CONFIG_HOME=$XDG_CONFIG_HOME
-XDG_CACHE_HOME=$XDG_CACHE_HOME
-XDG_DATA_HOME=$XDG_DATA_HOME
-XDG_STATE_HOME=$XDG_STATE_HOME
+    if [[ -f $dnf_manifest ]]; then
+      if confirm "Install dnf packages from $(pretty_path "$dnf_manifest")" 'Y'; then
+        notify -s 'Installing dnf packages'
+        mapfile -t dnf_packages < <(grep -vE '^(#|\s*$)' "$dnf_manifest")
+        if [[ ${#dnf_packages[@]} -gt 0 ]]; then
+          if ((DRY_RUN)); then
+            logg -i "[dry-run] sudo $dnf_exec install -y ${dnf_packages[*]}"
+          else
+            sudo "$dnf_exec" install -y "${dnf_packages[@]}"
+          fi
+        else
+          logg -w "No packages listed in $(pretty_path "$dnf_manifest")"
+        fi
+      fi
+    else
+      logg -w "dnf manifest not found locally and no remote fallback available."
+    fi
 
-GIT_NAME=$GIT_NAME
-GIT_EMAIL=$GIT_EMAIL
-GIT_SIGNINGKEY=$GIT_SIGNINGKEY
+    if [[ -n $dnf_manifest_tmp && -f $dnf_manifest_tmp ]]; then
+      rm -f "$dnf_manifest_tmp"
+    fi
 
-GITHUB_NAME=$GITHUB_NAME
-OP_VAULT=$OP_VAULT
+    install_linux_optional_tools
+    install_linux_gui_apps
 
-ATUIN_USERNAME=$ATUIN_USERNAME
-ATUIN_EMAIL=$ATUIN_EMAIL
-ATUIN_OP_TITLE=$ATUIN_OP_TITLE
+  elif [[ $PKG_MGR == apt ]]; then
+    if confirm "Update apt package lists" 'Y'; then
+      notify -s 'Updating apt cache'
+      if ((DRY_RUN)); then
+        logg -i '[dry-run] sudo apt update'
+      else
+        sudo apt update
+      fi
+    fi
 
-MEDIA=~/$MEDIA
----------------------------------------------
+    if confirm "Upgrade installed apt packages" 'N'; then
+      notify -s 'Upgrading apt packages'
+      if ((DRY_RUN)); then
+        logg -i '[dry-run] sudo apt upgrade -y'
+      else
+        sudo apt upgrade -y
+      fi
+    fi
+
+    local apt_manifest="$APT_MANIFEST_DEFAULT"
+    local apt_manifest_tmp=''
+
+    if [[ ! -f $apt_manifest && -n $APT_MANIFEST_URL_DEFAULT ]]; then
+      apt_manifest_tmp="$(mktemp)"
+      if ((DRY_RUN)); then
+        logg -i "[dry-run] curl -fsL $APT_MANIFEST_URL_DEFAULT -o $apt_manifest_tmp"
+      fi
+
+      if curl -fsL "$APT_MANIFEST_URL_DEFAULT" -o "$apt_manifest_tmp" 2>/dev/null; then
+        logg -i "Using remote apt manifest: $APT_MANIFEST_URL_DEFAULT"
+        apt_manifest="$apt_manifest_tmp"
+      else
+        logg -w "Failed to fetch apt manifest from $APT_MANIFEST_URL_DEFAULT"
+        rm -f "$apt_manifest_tmp"
+        apt_manifest_tmp=''
+      fi
+    fi
+
+    if [[ -f $apt_manifest ]]; then
+      if confirm "Install apt packages from $(pretty_path "$apt_manifest")" 'Y'; then
+        notify -s 'Installing apt packages'
+        mapfile -t apt_packages < <(grep -vE '^(#|\s*$)' "$apt_manifest")
+        if [[ ${#apt_packages[@]} -gt 0 ]]; then
+          if ((DRY_RUN)); then
+            logg -i "[dry-run] sudo apt install -y ${apt_packages[*]}"
+          else
+            sudo apt install -y "${apt_packages[@]}"
+          fi
+        else
+          logg -w "No packages listed in $(pretty_path "$apt_manifest")"
+        fi
+      fi
+    else
+      logg -w "apt manifest not found locally and no remote fallback available."
+    fi
+
+    if [[ -n $apt_manifest_tmp && -f $apt_manifest_tmp ]]; then
+      rm -f "$apt_manifest_tmp"
+    fi
+
+    install_linux_optional_tools
+    install_linux_gui_apps
+  fi
+}
+
+# Fetch a secret field from 1Password if enabled
+# Usage: get_op_field <item> <field>
+get_op_field() {
+  local item="$1"
+  local field="$2"
+  local value
+
+  ((USE_1PASSWORD)) || return 1
+  ((DRY_RUN)) && printf '\n' && return 0
+
+  value=$(op item get "$item" --vault "$OP_VAULT" --field "$field" --reveal 2>/dev/null) || return 1
+  printf '%s' "$value"
+}
+
+# Collect environment preferences and prompt for 1Password data
+# Usage: collect_environment
+collect_environment() {
+  # Sign into 1Password CLI when integration is enabled
+  ((USE_1PASSWORD)) && {
+    notify -s 'Signing into 1Password CLI'
+    safe_op_call signin || { logg -w 'Skipping 1Password features (signin failed).' && USE_1PASSWORD=0; }
+  }
+
+  # Load any existing Git metadata as defaults
+  local existing_git_name existing_git_email existing_signingkey
+
+  existing_git_name=$(git config --global user.name 2>/dev/null || true)
+  existing_git_email=$(git config --global user.email 2>/dev/null || true)
+  existing_signingkey=$(git config --global user.signingkey 2>/dev/null || true)
+
+  while true; do
+    while true; do
+      read -rp "${WHITE}>>> Git Username${RESET} (${existing_git_name:-required}): " GIT_NAME
+      [[ -z $GIT_NAME && -n $existing_git_name ]] && GIT_NAME="$existing_git_name"
+      [[ -n $GIT_NAME ]] && break
+      logg -w 'Git username required.'
+    done
+
+    while true; do
+      read -rp "${WHITE}>>> Git Email${RESET} (${existing_git_email:-required}): " GIT_EMAIL
+      [[ -z $GIT_EMAIL && -n $existing_git_email ]] && GIT_EMAIL="$existing_git_email"
+      [[ -n $GIT_EMAIL ]] && break
+      logg -w 'Git email required.'
+    done
+
+    if ((USE_1PASSWORD)); then
+      local default_vault=Private
+      read -rp "${WHITE}>>> 1Password Vault name${RESET} (<Enter> for '$default_vault'): " OP_VAULT
+      OP_VAULT="${OP_VAULT:-$default_vault}"
+
+      OP_GIT_SIGNKEY="$(get_op_field 'GitHub Signing Key' 'public key' || true)"
+      local obfuscated_key="${OP_GIT_SIGNKEY:0:18} ... ${OP_GIT_SIGNKEY: -10}"
+      [[ -z $OP_GIT_SIGNKEY ]] && obfuscated_key=""
+
+      read -rp "${WHITE}>>> Git Signing Key${RESET} (<Enter> to use '${obfuscated_key}'): " GIT_SIGNINGKEY
+      GIT_SIGNINGKEY="${GIT_SIGNINGKEY:-${OP_GIT_SIGNKEY:-$existing_signingkey}}"
+
+      read -rp "${WHITE}>>> GitHub User${RESET} (<Enter> to use '${GIT_EMAIL%@*}'): " GITHUB_NAME
+      GITHUB_NAME="${GITHUB_NAME:-${GIT_EMAIL%@*}}"
+
+      read -rp "${WHITE}>>> 1Password Atuin Sync Title${RESET} (<Enter> for 'Atuin Sync'): " ATUIN_OP_TITLE
+      ATUIN_OP_TITLE="${ATUIN_OP_TITLE:-Atuin Sync}"
+
+      read -rp "${WHITE}>>> Atuin Username${RESET} (<Enter> for '${GIT_EMAIL%@*}'): " ATUIN_USERNAME
+      ATUIN_USERNAME="${ATUIN_USERNAME:-${GIT_EMAIL%@*}}"
+
+      read -rp "${WHITE}>>> Atuin Email${RESET} (<Enter> for '$GIT_EMAIL'): " ATUIN_EMAIL
+      ATUIN_EMAIL="${ATUIN_EMAIL:-$GIT_EMAIL}"
+    else
+      OP_VAULT=""
+      GIT_SIGNINGKEY="${existing_signingkey:-}"
+      read -rp "${WHITE}>>> GitHub User${RESET} (<Enter> to use '${GIT_EMAIL%@*}'): " GITHUB_NAME
+      GITHUB_NAME="${GITHUB_NAME:-${GIT_EMAIL%@*}}"
+      ATUIN_OP_TITLE=''
+      ATUIN_USERNAME=''
+      ATUIN_EMAIL=''
+    fi
+
+    read -rp "${WHITE}>>> Media directory ~/$MEDIA${RESET} (<Enter> to skip): " MEDIA
+    MEDIA="${MEDIA:-}"
+
+    cat <<EOF
+
+${CYAN}-------------- ENVIRONMENT ------------------${RESET}
+${MAGENTA}OS TYPE${RESET}: $DISTRO
+
+${MAGENTA}XDG_CONFIG_HOME${RESET}=$(pretty_path "$XDG_CONFIG_HOME")
+${MAGENTA}XDG_CACHE_HOME${RESET}=$(pretty_path "$XDG_CACHE_HOME")
+${MAGENTA}XDG_DATA_HOME${RESET}=$(pretty_path "$XDG_DATA_HOME")
+${MAGENTA}XDG_STATE_HOME${RESET}=$(pretty_path "$XDG_STATE_HOME")
+
+${MAGENTA}GIT_NAME${RESET}=$GIT_NAME
+${MAGENTA}GIT_EMAIL${RESET}=$GIT_EMAIL
+${MAGENTA}GIT_SIGNINGKEY${RESET}=${GIT_SIGNINGKEY:-<unset>}
+
+${MAGENTA}GITHUB_NAME${RESET}=$GITHUB_NAME
+${MAGENTA}OP_VAULT${RESET}=${OP_VAULT:-<unused>}
+
+${MAGENTA}ATUIN_USERNAME${RESET}=${ATUIN_USERNAME:-<skipped>}
+${MAGENTA}ATUIN_EMAIL${RESET}=${ATUIN_EMAIL:-<skipped>}
+${MAGENTA}ATUIN_OP_TITLE${RESET}=${ATUIN_OP_TITLE:-<skipped>}
+
+${MAGENTA}MEDIA${RESET}=~/${MEDIA:-<not set>}
+${CYAN}---------------------------------------------${RESET}
 EOF
 
-  read -rp "${YELLOW}RE-ENTER ANY VARIABLES? (<Enter> TO CONTINUE): ${RESET}"
-  [[ -z $REPLY || ! $REPLY =~ ^[Yy]$ ]] && break
-done
+    confirm "${YELLOW}Re-enter any variables?${RESET}" "N" || break
+  done
+}
 
-echo -e "${CYAN}󰓒 [$((++step))/12] CREATE SYMLINKS & DIRECTORIES 󰓒${RESET}"
-
+# Create or refresh a symlink under the given base directory
+# Usage: symlink <source> <base_dir> <link_name>
 symlink() {
   local src="$1"
-  local cwd="$2"
-  local tgt="$3"
+  local base="$2"
+  local target="$3"
 
-  # Test: Valid Current Working Dir
-  cd "$cwd" &>/dev/null || return 1
+  if [[ -z $src || -z $base || -z $target ]]; then
+    return
+  fi
 
-  # Test: Valid Source File/Folder
-  [[ -e $src ]] || return 1
+  if [[ ! -d $base ]]; then
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] mkdir -p $base"
+    else
+      mkdir -p "$base"
+    fi
+  fi
 
-  # Link Source to Target - backup original if directory
-  [[ -d $tgt ]] && mv -f "$tgt" "${tgt}.bak"
-  ln -sf "$src" "$tgt"
+  if ! pushd "$base" >/dev/null 2>&1; then
+    logg -w "Skipping link (unable to enter $base)"
+    return
+  fi
 
-  echo "[+ Link: $src -> $cwd/$tgt]"
+  if [[ ! -e $src && ! -L $src ]]; then
+    logg -w "Skipping link (missing source: $base/$src)"
+    popd >/dev/null || return
+    return
+  fi
+
+  if ((DRY_RUN)); then
+    logg -i "[dry-run] ln -sf $src -> $base/$target"
+    popd >/dev/null || return
+    return
+  fi
+
+  [[ -d $target && ! -L $target ]] && mv -f "$target" "${target}.bak"
+  ln -sf "$src" "$target"
+  logg -i "[+ Link: $src -> $base/$target]"
+  popd >/dev/null || return
 }
 
-# Ensure base directories created before symlinking
-directories=(
-  "$XDG_CACHE_HOME"
-  "$XDG_CONFIG_HOME/op"
-  "$XDG_DATA_HOME/bash"
-  "$XDG_DATA_HOME/zoxide"
-  "$XDG_DATA_HOME/zsh"
-  "$XDG_STATE_HOME/less"
-  "$XDG_STATE_HOME/mycli"
-  "$XDG_STATE_HOME/mysql"
-  "$XDG_STATE_HOME/python"
-)
+# Link dotfiles into their XDG targets and optional media directory.
+# Usage: create_symlinks
+create_symlinks() {
+  local vscode_src='../../../.dotfiles/vscode/settings.json'
 
-mkdir -p "${directories[@]}"
+  local dirs=(
+    "$XDG_CACHE_HOME"
+    "$XDG_STATE_HOME/bash"
+    "$XDG_STATE_HOME/codex"
+    "$XDG_STATE_HOME/less"
+    "$XDG_STATE_HOME/mycli"
+    "$XDG_STATE_HOME/mysql"
+    "$XDG_STATE_HOME/python"
+    "$XDG_STATE_HOME/zsh"
+    "$XDG_DATA_HOME/zsh"
+  )
 
-# NOTE manage all links - provides fine-grained control over GNU stow
-symlinks=(
-  .dotfiles/bash/.bash_profile "$HOME" .bash_profile
-  .dotfiles/bash/.bashrc "$HOME" .bashrc
-  .dotfiles/zsh/.zshenv "$HOME" .zshenv
+  local symlinks=(
+    .dotfiles/bash/.bash_profile "$HOME" .bash_profile
+    .dotfiles/bash/.bashrc "$HOME" .bashrc
+    .dotfiles/zsh/.zshenv "$HOME" .zshenv
+    ../.dotfiles/atuin "$XDG_CONFIG_HOME" atuin
+    ../.dotfiles/bash "$XDG_CONFIG_HOME" bash
+    ../.dotfiles/bat "$XDG_CONFIG_HOME" bat
+    ../.dotfiles/blesh "$XDG_CONFIG_HOME" blesh
+    ../.dotfiles/browser "$XDG_CONFIG_HOME" browser
+    ../.dotfiles/btop "$XDG_CONFIG_HOME" btop
+    ../.dotfiles/dust "$XDG_CONFIG_HOME" dust
+    ../.dotfiles/eza "$XDG_CONFIG_HOME" eza
+    ../.dotfiles/fzf "$XDG_CONFIG_HOME" fzf
+    ../.dotfiles/gh "$XDG_CONFIG_HOME" gh
+    ../.dotfiles/git "$XDG_CONFIG_HOME" git
+    ../.dotfiles/glow "$XDG_CONFIG_HOME" glow
+    ../.dotfiles/mycli "$XDG_CONFIG_HOME" mycli
+    ../.dotfiles/nvim "$XDG_CONFIG_HOME" nvim
+    ../.dotfiles/ssh "$XDG_CONFIG_HOME" ssh
+    ../.dotfiles/tmux "$XDG_CONFIG_HOME" tmux
+    ../.dotfiles/wezterm "$XDG_CONFIG_HOME" wezterm
+    ../.dotfiles/yazi "$XDG_CONFIG_HOME" yazi
+    ../.dotfiles/zsh "$XDG_CONFIG_HOME" zsh
+    ../.dotfiles/starship/config.toml "$XDG_CONFIG_HOME" starship.toml
+    themes/sourdiesel.yml "$XDG_CONFIG_HOME/eza" theme.yml
+    ../../../.dotfiles/btop/btop.log "$XDG_STATE_HOME/btop" btop.log
+  )
 
-  ../.dotfiles/1Password "$XDG_CONFIG_HOME" 1Password
-  ../.dotfiles/atuin "$XDG_CONFIG_HOME" atuin
-  ../.dotfiles/bash "$XDG_CONFIG_HOME" bash
-  ../.dotfiles/bat "$XDG_CONFIG_HOME" bat
-  ../.dotfiles/blesh "$XDG_CONFIG_HOME" blesh
-  ../.dotfiles/btop "$XDG_CONFIG_HOME" btop
-  ../.dotfiles/dust "$XDG_CONFIG_HOME" dust
-  ../.dotfiles/eza "$XDG_CONFIG_HOME" eza
-  ../.dotfiles/fzf "$XDG_CONFIG_HOME" fzf
-  ../.dotfiles/gh "$XDG_CONFIG_HOME" gh
-  ../.dotfiles/git "$XDG_CONFIG_HOME" git
-  ../.dotfiles/glow "$XDG_CONFIG_HOME" glow
-  ../.dotfiles/hammerspoon "$XDG_CONFIG_HOME" hammerspoon
-  ../.dotfiles/karabiner "$XDG_CONFIG_HOME" karabiner
-  ../.dotfiles/mycli "$XDG_CONFIG_HOME" mycli
-  ../.dotfiles/nvim "$XDG_CONFIG_HOME" nvim
-  ../.dotfiles/ssh "$XDG_CONFIG_HOME" ssh
-  ../.dotfiles/tmux "$XDG_CONFIG_HOME" tmux
-  ../.dotfiles/wezterm "$XDG_CONFIG_HOME" wezterm
-  ../.dotfiles/yazi "$XDG_CONFIG_HOME" yazi
-  ../.dotfiles/youtube "$XDG_CONFIG_HOME" youtube
-  ../.dotfiles/zsh "$XDG_CONFIG_HOME" zsh
+  # Ensure application directories are created
+  for dir in "${dirs[@]}"; do run "mkdir -p \"$dir\""; done
 
-  ../.dotfiles/starship/config.toml "$XDG_CONFIG_HOME" starship.toml
-  ../../.dotfiles/op/plugins.sh "$XDG_CONFIG_HOME/op" plugins.sh
-  ../../.dotfiles/eza "$HOME/Library/Application Support" eza
+  # Add macOS specific tools
+  [[ $OS_TYPE == macos ]] && {
+    local app_data="$HOME/Library/Application Support"
 
-  "$MEDIA/developer" "$HOME" Developer
-  "../$MEDIA/content" "$HOME/Movies" content
-  "../$MEDIA/icons" "$HOME/Pictures" icons
-  "../$MEDIA/screenshots" "$HOME/Pictures" screenshots
-  "../$MEDIA/wallpapers" "$HOME/Pictures" wallpapers
-  "../$MEDIA/education" "$HOME/Documents" education
-  "../$MEDIA/finances" "$HOME/Documents" finances
-)
+    symlinks+=(
+      ../.dotfiles/hammerspoon "$XDG_CONFIG_HOME" hammerspoon
+      ../.dotfiles/karabiner "$XDG_CONFIG_HOME" karabiner
+      ../../.dotfiles/eza "$app_data" eza
+    )
 
-# Safely create links - skips over broken paths
-for ((i = 0; i < ${#symlinks[@]}; i += 3)); do symlink "${symlinks[i]}" "${symlinks[i + 1]}" "${symlinks[i + 2]}"; done
+    vscode_src="../$vscode_src"
+  }
 
-echo -e "${CYAN}󰓒 [$((++step))/12] CONFIGURE MACOS OPTIONS 󰓒${RESET}"
+  # Link Visual Studio Code settings
+  local vscode_target="${app_data:-$XDG_CONFIG_HOME}/Code/User"
+  symlinks+=("$vscode_src" "$vscode_target" settings.json)
 
-echo -e "${PURPLE}opt$((++num)): Change default screenshots location to ~/Pictures/screenshots/"
-[[ -d $HOME/Pictures/screenshots ]] || mkdir "$HOME/Pictures/screenshots"
-defaults write com.apple.screencapture location -string "$HOME/Pictures/screenshots"
+  # Link 1Password ssh config
+  ((USE_1PASSWORD)) && symlinks+=(../.dotfiles/1Password "$XDG_CONFIG_HOME" 1Password)
 
-echo -e "${PURPLE}opt$((++num)): Speed up dock animation"
-defaults write com.apple.dock autohide-delay -float 0.1
+  # Link MEDIA directory (i.e. Dropbox/)
+  [[ -z $MEDIA ]] && logg -w 'Media path not set. Skipping media symlinks...'
 
-echo -e "${PURPLE}opt$((++num)): Speed up dock animation"
-defaults write com.apple.dock autohide -bool true
+  [[ -n $MEDIA && -d "$HOME/$MEDIA" ]] && symlinks+=(
+    "../$MEDIA/content" "$HOME/Movies" content
+    "../$MEDIA/icons" "$HOME/Pictures" icons
+    "../$MEDIA/screenshots" "$HOME/Pictures" screenshots
+    "../$MEDIA/wallpapers" "$HOME/Pictures" wallpapers
+    "../$MEDIA/education" "$HOME/Documents" education
+    "../$MEDIA/finances" "$HOME/Documents" finances
+  )
 
-echo -e "${PURPLE}opt$((++num)): Remove dock autohide animation"
-defaults write com.apple.dock autohide-time-modifier -int 0
-
-echo -e "${PURPLE}opt$((++num)): Show app switcher on all screens"
-defaults write com.apple.dock appswitcher-all-displays -bool true
-
-echo -e "${PURPLE}opt$((++num)): Shorten Mission Control animation"
-defaults write com.apple.dock expose-animation-duration -float 0.1
-
-echo -e "${PURPLE}opt$((++num)): Use list view in Finder"
-defaults write com.apple.finder FXPreferredViewStyle -string "Nlsv"
-
-echo -e "${PURPLE}opt$((++num)): Enable quitting Finder via ⌘ + Q"
-defaults write com.apple.finder QuitMenuItem -bool true
-
-echo -e "${PURPLE}opt$((++num)): Show hidden files in Finder"
-defaults write com.apple.finder AppleShowAllFiles -bool true
-
-echo -e "${PURPLE}opt$((++num)): Disable file extension change warning"
-defaults write com.apple.finder FXEnableExtensionChangeWarning -bool false
-
-killall Dock
-
-echo -e "${CYAN}󰓒 [$((++step))/12] CONFIGURE GIT AND GITHUB CLI 󰓒${RESET}"
-
-# Update git credentials
-git config --global user.name "$GIT_NAME"
-git config --global user.email "$GIT_EMAIL"
-git config --global user.signingkey "$GIT_SIGNINGKEY"
-
-# Update git authentication to ssh and show fetch/push urls
-github="git@github.com:$GITHUB_NAME/dotfiles.git"
-git -C "$HOME/.dotfiles" remote set-url origin "$github"
-[[ $GITHUB_NAME == vivek-x-jha ]] || git -C "$HOME/.dotfiles" remote add upstream "$github"
-
-# Update ssh allowed signers
-echo "$GIT_EMAIL $GIT_SIGNINGKEY" >"$XDG_CONFIG_HOME/ssh/allowed_signers"
-
-# Update 1password ssh agent: https://developer.1password.com/docs/ssh/agent/config
-perl -pi -e "s/vault = \"Private\"/vault = \"$OP_VAULT\"/g" "$XDG_CONFIG_HOME/1Password/ssh/agent.toml"
-
-# Authenticate GitHub CLI
-cd "$HOME/.dotfiles" || return 1
-
-gh auth login
-gh repo set-default "$GITHUB_NAME/dotfiles"
-
-rm -f "$HOME/.dotfiles/gh/hosts.yml"
-git add --all
-
-echo -e "${CYAN}󰓒 [$((++step))/12] INSTALL SHELL PLUGINS 󰓒${RESET}"
-
-# Install zsh plugin manager zap
-[[ -f $XDG_DATA_HOME/zap/zap.zsh ]] || zsh <(curl -s https://raw.githubusercontent.com/zap-zsh/zap/master/install.zsh) --branch release-v1 -k
-
-# Build blesh
-git clone --recursive --depth 1 --shallow-submodules https://github.com/akinomyoga/ble.sh.git
-make -C ble.sh install PREFIX="$HOME/.local"
-rm -rf ble.sh
-
-echo -e "${CYAN}󰓒 [$((++step))/12] SETUP ATUIN SYNC 󰓒${RESET}"
-
-# Create atuin login
-op item get "$ATUIN_OP_TITLE" --vault "$OP_VAULT" &>/dev/null || op item create \
-  --vault "$OP_VAULT" \
-  --category login \
-  --title "$ATUIN_OP_TITLE" \
-  --generate-password='letters,digits,symbols,32' \
-  "username=$ATUIN_USERNAME" \
-  "email[text]=$ATUIN_EMAIL" \
-  "key[password]=<Update with \$(atuin key)>" &>/dev/null
-
-# Get 1password field like password or key
-getop() {
-  local field="$1"
-  op item get "$ATUIN_OP_TITLE" \
-    --vault "$OP_VAULT" \
-    --fields "$field" \
-    --reveal
+  # Ensure all links are created
+  for ((i = 0; i < ${#symlinks[@]}; i += 3)); do
+    symlink "${symlinks[i]}" "${symlinks[i + 1]}" "${symlinks[i + 2]}"
+  done
 }
 
-atuin register -u "$ATUIN_USERNAME" -e "$ATUIN_EMAIL" -p "$(getop password)"
+# Apply preferred macOS UI defaults
+# Usage: configure_macos_defaults
+configure_macos_defaults() {
+  if [[ $OS_TYPE != macos ]]; then
+    logg -w "Skipping macOS UI tweaks on $DISTRO."
+    return
+  fi
 
-# Update Atuin Sync with generated key
-op item edit "$ATUIN_OP_TITLE" --vault "$OP_VAULT" key="$(atuin key)"
+  run "mkdir -p $HOME/Pictures/screenshots"
+  run "defaults write com.apple.screencapture location -string $HOME/Pictures/screenshots"
 
-# Ensure authenticated as atuin user - NOTE is idempotent
-atuin status | grep -q "$ATUIN_USERNAME" || (
-  atuin logout
-  atuin login -u "$ATUIN_USERNAME" -p "$(getop password)" -k "$(getop key)"
-) >/dev/null
+  local defaults_settings=(
+    'com.apple.dock autohide-delay -float 0.1'
+    'com.apple.dock autohide -bool true'
+    'com.apple.dock autohide-time-modifier -int 0'
+    'com.apple.dock appswitcher-all-displays -bool true'
+    'com.apple.dock expose-animation-duration -float 0.1'
+    'com.apple.finder FXPreferredViewStyle -string Nlsv'
+    'com.apple.finder QuitMenuItem -bool true'
+    'com.apple.finder AppleShowAllFiles -bool true'
+    'com.apple.finder FXEnableExtensionChangeWarning -bool false'
+  )
 
-# Sync shell history & integrate with Atuin history
-atuin import auto
-atuin sync
+  local domain key option value
+  for entry in "${defaults_settings[@]}"; do
+    read -r domain key option value <<<"$entry"
+    run "defaults write $domain $key $option $value"
+  done
 
-echo -e "${CYAN}󰓒 [$((++step))/12] LOAD BAT THEMES 󰓒${RESET}"
+  run 'killall Dock'
+}
 
-# Rebuild bat cache any time theme folder changes
-bat cache --build
+# Configure git/user settings and GitHub CLI defaults
+# Usage: configure_git_and_github
+configure_git_and_github() {
+  if ((DRY_RUN)); then
+    logg -i "[dry-run] git config --global user.name $GIT_NAME"
+    logg -i "[dry-run] git config --global user.email $GIT_EMAIL"
+    [[ -n $GIT_SIGNINGKEY ]] && logg -i "[dry-run] git config --global user.signingkey $GIT_SIGNINGKEY"
+  else
+    git config --global user.name "$GIT_NAME"
+    git config --global user.email "$GIT_EMAIL"
+    [[ -n $GIT_SIGNINGKEY ]] && git config --global user.signingkey "$GIT_SIGNINGKEY"
+  fi
 
-echo -e "${CYAN}󰓒 [$((++step))/12] SETUP TOUCHID SUDO 󰓒${RESET}"
+  local github="git@github.com:$GITHUB_NAME/dotfiles.git"
 
-# Ensure touchid possible in interactive mode or tmux
-echo "# Authenticate with Touch ID - even in tmux
-auth  optional    $(brew --prefix)/lib/pam/pam_reattach.so ignore_ssh
-auth  sufficient  pam_tid.so" | sudo tee /etc/pam.d/sudo_local >/dev/null
-echo 'UPDATED /etc/pam.d/sudo_local'
+  if ((DRY_RUN)); then
+    logg -i "[dry-run] git -C $HOME/.dotfiles remote set-url origin $github"
+  else
+    git -C "$HOME/.dotfiles" remote set-url origin "$github" 2>/dev/null || logg -w 'Failed to update origin remote.'
+    if [[ $GITHUB_NAME != "vivek-x-jha" ]]; then
+      git -C "$HOME/.dotfiles" remote add upstream "$github" 2>/dev/null || true
+    fi
+  fi
 
-# Hide tty login message for iterm
-echo -e "${CYAN}󰓒 [$((++step))/12] SURPRESS ITERM2 LOGIN 󰓒${RESET}"
-echo 'CREATED ~/.hushlogin'
-touch "$HOME/.hushlogin"
+  local allowed_signers="$XDG_CONFIG_HOME/ssh/allowed_signers"
+  [[ -n $GIT_SIGNINGKEY ]] && run "printf '%s\n' \"$GIT_EMAIL $GIT_SIGNINGKEY\" > \"$allowed_signers\""
 
-echo -e "${CYAN}󰓒 [$((++step))/12] CHANGE SHELL 󰓒${RESET}"
-for shell in bash zsh; do
-  shell_path="$(brew --prefix)/bin/$shell"
-  grep -qxF "$shell_path" /etc/shells || echo "$shell_path" | sudo tee -a /etc/shells
-done
+  if ((USE_1PASSWORD)); then
+    local agent_file="$XDG_CONFIG_HOME/1Password/ssh/agent.toml"
+    if [[ -f $agent_file ]]; then
+      if ((DRY_RUN)); then
+        logg -i "[dry-run] perl -pi -e \"s/vault = \\\"Private\\\"/vault = \\\"$OP_VAULT\\\"/g\" $agent_file"
+      else
+        perl -pi -e "s/vault = \"Private\"/vault = \"$OP_VAULT\"/g" "$agent_file"
+      fi
+    else
+      logg -w "1Password SSH agent config not found at $agent_file"
+    fi
+  fi
 
-chsh -s "$shell_path"
-echo "CURRENT SHELL IS $(basename "$SHELL")"
-echo "SHELL=$shell_path"
+  if command -v gh &>/dev/null; then
+    if ((DRY_RUN)); then
+      logg -i '[dry-run] gh auth login'
+      logg -i "[dry-run] gh repo set-default $GITHUB_NAME/dotfiles"
+    else
+      (cd "$HOME/.dotfiles" && gh auth login)
+      (cd "$HOME/.dotfiles" && gh repo set-default "$GITHUB_NAME/dotfiles")
+    fi
+  else
+    logg -w 'GitHub CLI not installed. Skipping gh auth.'
+  fi
 
-echo -e "${CYAN}󰓒 [$((++step))/12] HAMMERSPOON SETUP 󰓒${RESET}"
-defaults write org.hammerspoon.Hammerspoon MJConfigFile "$XDG_CONFIG_HOME/hammerspoon/init.lua"
-echo 'GO TO System Settings > Privacy & Security > Accessibility: ENSURE HAMMERSPOON IS LISTED AND ENABLED'
+  if ((DRY_RUN)); then
+    logg -i "[dry-run] rm -f $HOME/.dotfiles/gh/hosts.yml"
+    logg -i '[dry-run] git add --all'
+  else
+    rm -f "$HOME/.dotfiles/gh/hosts.yml"
+    git -C "$HOME/.dotfiles" add --all || true
+  fi
+}
 
-cd || exit
+# Clone curated developer repositories under the user's workspace
+# Usage: clone_developer_repos
+clone_developer_repos() {
+  local base="$DEVELOPER_CLONE_ROOT"
+
+  if ! command -v git &>/dev/null; then
+    logg -w 'git not available. Skipping developer repository cloning.'
+    return
+  fi
+
+  if ((DRY_RUN)); then
+    logg -i "[dry-run] mkdir -p $base"
+  else
+    mkdir -p "$base"
+  fi
+
+  local slug repo_name url dest
+  local sorted_slugs=()
+  while IFS= read -r slug; do
+    sorted_slugs+=("$slug")
+  done < <(printf '%s\n' "${DEVELOPER_REPOS[@]}" | sort)
+
+  for slug in "${sorted_slugs[@]}"; do
+    repo_name="${slug##*/}"
+    url="git@github.com:${slug}.git"
+    dest="$base/$repo_name"
+
+    if [[ -d $dest/.git ]]; then
+      logg -i "$repo_name already present; ensuring SSH remote."
+      if ((DRY_RUN)); then
+        logg -i "[dry-run] git -C $dest remote set-url origin $url"
+      else
+        if ! git -C "$dest" remote set-url origin "$url" 2>/dev/null; then
+          git -C "$dest" remote add origin "$url" 2>/dev/null || logg -w "Failed to configure origin for $repo_name."
+        fi
+      fi
+      continue
+    fi
+
+    if [[ -e $dest ]]; then
+      local pretty_dest
+      pretty_dest="$(pretty_path "$dest")"
+      logg -w "Skipping $repo_name - $pretty_dest exists but is not a git repository."
+      continue
+    fi
+
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] git clone $url $dest"
+    else
+      git clone "$url" "$dest" || logg -w "Failed to clone $repo_name from $url."
+    fi
+  done
+}
+
+# Clone or update project template repository
+# Usage: install_templates
+install_templates() {
+  if command -v gh &>/dev/null; then
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] gh repo clone vivek-x-jha/templates $XDG_DATA_HOME/templates"
+    else
+      gh repo clone vivek-x-jha/templates "$XDG_DATA_HOME/templates" 2>/dev/null || logg -w 'gh repo clone failed (already exists?).'
+    fi
+  else
+    logg -w 'GitHub CLI not available. Skipping template clone.'
+  fi
+}
+
+# Install zap and ble.sh shell plugins
+# Usage: install_shell_plugins
+install_shell_plugins() {
+  if [[ ! -f $XDG_DATA_HOME/zap/zap.zsh ]]; then
+    if ((DRY_RUN)); then
+      logg -i '[dry-run] zsh <(curl -s https://raw.githubusercontent.com/zap-zsh/zap/master/install.zsh) --branch release-v1 -k'
+    else
+      zsh <(curl -s https://raw.githubusercontent.com/zap-zsh/zap/master/install.zsh) --branch release-v1 -k
+    fi
+  fi
+
+  if ((DRY_RUN)); then
+    logg -i '[dry-run] git clone --recursive --depth 1 --shallow-submodules https://github.com/akinomyoga/ble.sh.git'
+    logg -i "[dry-run] make -C ble.sh install PREFIX=$HOME/.local"
+    logg -i '[dry-run] rm -rf ble.sh'
+  else
+    if git clone --recursive --depth 1 --shallow-submodules https://github.com/akinomyoga/ble.sh.git; then
+      make -C ble.sh install PREFIX="$HOME/.local"
+      rm -rf ble.sh
+    else
+      logg -w 'Unable to clone ble.sh'
+    fi
+  fi
+}
+
+# Provision Atuin sync credentials via 1Password
+# Usage: setup_atuin_sync
+setup_atuin_sync() {
+  if ! command -v atuin &>/dev/null; then
+    logg -w 'Atuin not installed. Skipping sync setup.'
+    return
+  fi
+
+  if ! ((USE_1PASSWORD)); then
+    logg -w '1Password disabled. Skipping Atuin vault automation.'
+    return
+  fi
+
+  if ((DRY_RUN)); then
+    logg -i "[dry-run] op item get $ATUIN_OP_TITLE --vault $OP_VAULT"
+    logg -i '[dry-run] atuin register/login'
+    return
+  fi
+
+  if ! safe_op_call item get "$ATUIN_OP_TITLE" --vault "$OP_VAULT" &>/dev/null; then
+    safe_op_call item create \
+      --vault "$OP_VAULT" \
+      --category login \
+      --title "$ATUIN_OP_TITLE" \
+      --generate-password='letters,digits,symbols,32' \
+      "username=$ATUIN_USERNAME" \
+      "email[text]=$ATUIN_EMAIL" \
+      "key[password]=<Update with \$(atuin key)>" >/dev/null
+  fi
+
+  local atuin_password
+  atuin_password="$(get_op_field "$ATUIN_OP_TITLE" password)"
+  if [[ -z $atuin_password ]]; then
+    logg -w 'Failed to fetch Atuin password from 1Password. Skipping sync.'
+    return
+  fi
+
+  atuin register -u "$ATUIN_USERNAME" -e "$ATUIN_EMAIL" -p "$atuin_password" || true
+  safe_op_call item edit "$ATUIN_OP_TITLE" --vault "$OP_VAULT" key="$(atuin key)" >/dev/null
+
+  atuin status | grep -q "$ATUIN_USERNAME" || (
+    atuin logout
+    atuin login -u "$ATUIN_USERNAME" -p "$atuin_password" -k "$(get_op_field "$ATUIN_OP_TITLE" key)"
+  ) >/dev/null 2>&1
+
+  atuin import auto
+  atuin sync
+}
+
+# Rebuild bat's theme cache when available
+# Usage: rebuild_bat_cache
+rebuild_bat_cache() {
+  if ! command -v bat &>/dev/null; then
+    logg -w 'bat not installed. Skipping cache rebuild.'
+    return
+  fi
+  if ((DRY_RUN)); then
+    logg -i '[dry-run] bat cache --build'
+  else
+    bat cache --build
+  fi
+}
+
+# Configure Touch ID-backed sudo when supported
+# Usage: configure_sudo_auth
+configure_sudo_auth() {
+  if [[ $OS_TYPE == macos ]]; then
+    local brew_prefix
+    brew_prefix=$(brew --prefix 2>/dev/null)
+    if [[ -z $brew_prefix ]]; then
+      logg -w 'Unable to determine Homebrew prefix for Touch ID setup.'
+      return
+    fi
+    local pam_content="# Authenticate with Touch ID - even in tmux\nauth  optional    ${brew_prefix}/lib/pam/pam_reattach.so ignore_ssh\nauth  sufficient  pam_tid.so"
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] sudo tee /etc/pam.d/sudo_local <<<'$pam_content'"
+    else
+      printf '%s\n' "$pam_content" | sudo tee /etc/pam.d/sudo_local >/dev/null
+      logg -i 'UPDATED /etc/pam.d/sudo_local'
+    fi
+  else
+    logg -w "Touch ID sudo configuration not applicable on $DISTRO."
+  fi
+}
+
+# Suppress login banner by ensuring ~/.hushlogin exists
+# Usage: suppress_login_banner
+suppress_login_banner() {
+  if ((DRY_RUN)); then
+    logg -i "[dry-run] touch $HOME/.hushlogin"
+  else
+    touch "$HOME/.hushlogin"
+  fi
+  logg -i 'Ensured ~/.hushlogin exists'
+}
+
+# Ensure preferred shell binaries are registered and set as default
+# Usage: change_shell_default
+change_shell_default() {
+  local shell_paths=()
+  if [[ $OS_TYPE == macos ]]; then
+    local brew_prefix
+    brew_prefix=$(brew --prefix 2>/dev/null)
+    if [[ -n $brew_prefix ]]; then
+      shell_paths=("$brew_prefix/bin/bash" "$brew_prefix/bin/zsh")
+    else
+      logg -w 'Homebrew prefix unavailable; skipping shell change.'
+      return
+    fi
+  else
+
+    while IFS= read -r shell_candidate; do
+      [[ -n $shell_candidate ]] && shell_paths+=("$shell_candidate")
+    done < <(command -v bash 2>/dev/null)
+    while IFS= read -r shell_candidate; do
+      [[ -n $shell_candidate ]] && shell_paths+=("$shell_candidate")
+    done < <(command -v zsh 2>/dev/null)
+  fi
+
+  local new_shell=""
+  for shell_path in "${shell_paths[@]}"; do
+    [[ -x $shell_path ]] || continue
+    new_shell="$shell_path"
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] ensure $shell_path listed in /etc/shells"
+    else
+      grep -qxF "$shell_path" /etc/shells || echo "$shell_path" | sudo tee -a /etc/shells >/dev/null
+    fi
+  done
+
+  if [[ -n $new_shell ]]; then
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] chsh -s $new_shell"
+    else
+      chsh -s "$new_shell" || logg -w "Failed to change default shell."
+    fi
+    logg -i "SHELL=$new_shell"
+  else
+    logg -w 'No shell candidates found to set as default.'
+  fi
+}
+
+# Configure desktop integrations like Hammerspoon
+# Usage: configure_desktop_integration
+configure_desktop_integration() {
+  if [[ $OS_TYPE == macos ]]; then
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] defaults write org.hammerspoon.Hammerspoon MJConfigFile $XDG_CONFIG_HOME/hammerspoon/init.lua"
+    else
+      defaults write org.hammerspoon.Hammerspoon MJConfigFile "$XDG_CONFIG_HOME/hammerspoon/init.lua"
+      logg -i 'Configure System Settings > Privacy & Security > Accessibility for Hammerspoon.'
+    fi
+  else
+    logg -w "Hammerspoon configuration skipped on $DISTRO. Configure your window manager manually."
+  fi
+}
+
+# Install optional Linux-only CLI dependencies
+# Usage: install_linux_optional_tools
+install_linux_optional_tools() {
+  [[ $OS_TYPE == linux ]] || return
+
+  notify -s 'Install optional CLI tooling'
+
+  if command -v atuin &>/dev/null; then
+    logg -i 'Atuin already installed.'
+  else
+    local atuin_cmd="curl --proto '=https' --tlsv1.2 -sSf https://repo.atuin.sh/install.sh | bash"
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] $atuin_cmd"
+    else
+      run "$atuin_cmd"
+    fi
+  fi
+
+  if command -v op &>/dev/null; then
+    logg -i '1Password CLI already installed.'
+  else
+    local key_cmd='curl -sS https://downloads.1password.com/linux/keys/1password.asc | sudo gpg --dearmor -o /usr/share/keyrings/1password-archive-keyring.gpg'
+    local repo_cmd="printf '%s\n' 'deb [signed-by=/usr/share/keyrings/1password-archive-keyring.gpg] https://downloads.1password.com/linux/debian/amd64 stable main' | sudo tee /etc/apt/sources.list.d/1password.list >/dev/null"
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] $key_cmd"
+      logg -i "[dry-run] $repo_cmd"
+      logg -i '[dry-run] sudo apt update'
+      logg -i '[dry-run] sudo apt install -y 1password-cli'
+    else
+      run "$key_cmd"
+      run "$repo_cmd"
+      run 'sudo apt update'
+      run 'sudo apt install -y 1password-cli'
+    fi
+  fi
+
+  if command -v bob &>/dev/null; then
+    logg -i 'bob already installed.'
+  else
+    if command -v cargo &>/dev/null; then
+      if ((DRY_RUN)); then
+        logg -i '[dry-run] cargo install bob-nvim'
+      else
+        run 'cargo install bob-nvim'
+      fi
+    else
+      logg -w 'Rust toolchain (cargo) not found; skipping bob installation.'
+    fi
+  fi
+
+  if command -v uv &>/dev/null; then
+    logg -i 'uv already installed.'
+  else
+    local uv_cmd='curl -Ls https://astral.sh/uv/install.sh | sh'
+    if ((DRY_RUN)); then
+      logg -i "[dry-run] $uv_cmd"
+    else
+      run "$uv_cmd"
+    fi
+  fi
+}
+
+# Install GUI applications recommended for Linux setups
+# Usage: install_linux_gui_apps
+install_linux_gui_apps() {
+  [[ $OS_TYPE == linux ]] || return
+
+  confirm 'Install recommended Linux GUI applications (Chrome, Slack, Spotify, etc.)' 'N' || {
+    logg -w 'Skipping Linux GUI application installs.'
+    return
+  }
+
+  notify -s 'Installing Linux GUI applications'
+
+  [[ $PKG_MGR == apt ]] && install_linux_gui_apps_apt && return
+  [[ $PKG_MGR == dnf ]] && install_linux_gui_apps_dnf && return
+
+  logg -w "No GUI installer defined for package manager: $PKG_MGR"
+}
+
+# Install GUI tooling on Debian/Ubuntu systems
+# Usage: install_linux_gui_apps_apt
+install_linux_gui_apps_apt() {
+  local download_dir="$HOME/Downloads/linux-gui"
+  local apt_update_needed=0
+
+  run "mkdir -p \"$download_dir\""
+
+  local onepassword_key='/usr/share/keyrings/1password-archive-keyring.gpg'
+  local onepassword_list='/etc/apt/sources.list.d/1password.list'
+
+  if [[ ! -f $onepassword_key ]]; then
+    run "curl -sS https://downloads.1password.com/linux/keys/1password.asc | sudo gpg --dearmor -o \"$onepassword_key\""
+    apt_update_needed=1
+  fi
+
+  if [[ ! -f $onepassword_list ]]; then
+    run "sudo tee \"$onepassword_list\" >/dev/null <<EOF
+deb [signed-by=$onepassword_key] https://downloads.1password.com/linux/debian/amd64 stable main
+EOF"
+    apt_update_needed=1
+  fi
+
+  local spotify_key='/usr/share/keyrings/spotify.gpg'
+  local spotify_list='/etc/apt/sources.list.d/spotify.list'
+
+  if [[ ! -f $spotify_key ]]; then
+    run "curl -fsSL https://download.spotify.com/debian/pubkey.gpg | sudo gpg --dearmor -o \"$spotify_key\""
+    apt_update_needed=1
+  fi
+
+  if [[ ! -f $spotify_list ]]; then
+    run "sudo tee \"$spotify_list\" >/dev/null <<EOF
+deb [signed-by=$spotify_key] http://repository.spotify.com stable non-free
+EOF"
+    apt_update_needed=1
+  fi
+
+  local ms_key='/usr/share/keyrings/ms.gpg'
+  local ms_list='/etc/apt/sources.list.d/vscode.list'
+
+  if [[ ! -f $ms_key ]]; then
+    run "curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor | sudo tee \"$ms_key\" >/dev/null"
+    apt_update_needed=1
+  fi
+
+  if [[ ! -f $ms_list ]]; then
+    run "sudo tee \"$ms_list\" >/dev/null <<EOF
+deb [arch=amd64 signed-by=$ms_key] https://packages.microsoft.com/repos/code stable main
+EOF"
+    apt_update_needed=1
+  fi
+
+  if ((apt_update_needed)); then run 'sudo apt update'; fi
+
+  local -a apt_packages=()
+
+  if ! dpkg -s 1password &>/dev/null; then apt_packages+=(1password); fi
+  if ! dpkg -s anki &>/dev/null && ! command -v anki &>/dev/null; then apt_packages+=(anki); fi
+  if ! dpkg -s nautilus-dropbox &>/dev/null; then apt_packages+=(nautilus-dropbox); fi
+  if ! dpkg -s spotify-client &>/dev/null && ! command -v spotify &>/dev/null; then apt_packages+=(spotify-client); fi
+  if ! dpkg -s code &>/dev/null && ! command -v code &>/dev/null; then apt_packages+=(code); fi
+  if ! dpkg -s vlc &>/dev/null && ! command -v vlc &>/dev/null; then apt_packages+=(vlc); fi
+
+  if [[ ${#apt_packages[@]} -gt 0 ]]; then
+    run "sudo apt install -y ${apt_packages[*]}"
+  else
+    logg -i 'Apt-based GUI packages already present.'
+  fi
+
+  install_deb_package() {
+    local pkg="$1"
+    local url="$2"
+    local label="$3"
+    local filename="$4"
+    local dest="$download_dir/${filename:-$pkg}.deb"
+
+    if dpkg -s "$pkg" &>/dev/null; then
+      logg -i "$label already installed."
+      return
+    fi
+
+    logg -i "Downloading $label installer."
+    run "curl -L \"$url\" -o \"$dest\""
+    run "sudo apt install -y \"$dest\""
+  }
+
+  install_deb_package google-chrome-stable 'https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb' 'Google Chrome'
+  install_deb_package slack-desktop 'https://downloads.slack-edge.com/desktop-releases/linux/x64/latest/slack-desktop-latest-amd64.deb' 'Slack'
+  install_deb_package discord 'https://discord.com/api/download?platform=linux&format=deb' 'Discord'
+
+  if ! command -v postman &>/dev/null; then
+    if command -v flatpak &>/dev/null; then
+      run 'flatpak install -y flathub com.getpostman.Postman'
+    else
+      logg -w 'Flatpak not available; skipping Postman installation. See gui-apps-linux.md for manual steps.'
+    fi
+  fi
+
+  if ! command -v wezterm &>/dev/null; then
+    if command -v flatpak &>/dev/null; then
+      run 'flatpak install -y flathub org.wezfurlong.wezterm'
+    else
+      logg -w 'WezTerm missing and Flatpak unavailable. Download from https://github.com/wez/wezterm/releases.'
+    fi
+  fi
+
+  if ! command -v thinkorswim &>/dev/null; then
+    logg -w 'Thinkorswim requires the vendor installer (see gui-apps-linux.md). Skipping automated install.'
+  fi
+}
+
+# Install GUI tooling on Fedora/RHEL systems
+# Usage: install_linux_gui_apps_dnf
+install_linux_gui_apps_dnf() {
+  local download_dir="$HOME/Downloads/linux-gui"
+  local dnf_refresh_needed=0
+
+  run "mkdir -p \"$download_dir\""
+
+  local rpmfusion_free='/etc/yum.repos.d/rpmfusion-free.repo'
+  local rpmfusion_nonfree='/etc/yum.repos.d/rpmfusion-nonfree.repo'
+
+  if [[ ! -f $rpmfusion_free ]]; then
+    run "sudo dnf install -y https://mirrors.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm"
+    dnf_refresh_needed=1
+  fi
+
+  if [[ ! -f $rpmfusion_nonfree ]]; then
+    run "sudo dnf install -y https://mirrors.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+    dnf_refresh_needed=1
+  fi
+
+  local onepassword_repo='/etc/yum.repos.d/1password.repo'
+  if [[ ! -f $onepassword_repo ]]; then
+    run 'sudo rpm --import https://downloads.1password.com/linux/keys/1password.asc'
+    run "sudo tee \"$onepassword_repo\" >/dev/null <<'EOF'
+[1password]
+name=1Password
+baseurl=https://downloads.1password.com/linux/rpm/stable/\$basearch
+enabled=1
+gpgcheck=1
+gpgkey=https://downloads.1password.com/linux/keys/1password.asc
+EOF"
+    dnf_refresh_needed=1
+  fi
+
+  local vscode_repo='/etc/yum.repos.d/vscode.repo'
+  if [[ ! -f $vscode_repo ]]; then
+    run 'sudo rpm --import https://packages.microsoft.com/keys/microsoft.asc'
+    run "sudo tee \"$vscode_repo\" >/dev/null <<'EOF'
+[code]
+name=Visual Studio Code
+baseurl=https://packages.microsoft.com/yumrepos/vscode
+enabled=1
+gpgcheck=1
+gpgkey=https://packages.microsoft.com/keys/microsoft.asc
+EOF"
+    dnf_refresh_needed=1
+  fi
+
+  local copr_repo='/etc/yum.repos.d/_copr:copr.fedorainfracloud.org:wez:wezterm.repo'
+  if [[ ! -f $copr_repo ]]; then
+    run 'sudo dnf -y copr enable wez/wezterm'
+    dnf_refresh_needed=1
+  fi
+
+  ((dnf_refresh_needed)) && run 'sudo dnf makecache'
+
+  local -a dnf_packages=()
+
+  if ! rpm -q 1password &>/dev/null; then dnf_packages+=(1password); fi
+  if ! rpm -q anki &>/dev/null && ! command -v anki &>/dev/null; then dnf_packages+=(anki); fi
+  if ! rpm -q nautilus-dropbox &>/dev/null; then dnf_packages+=(nautilus-dropbox); fi
+  if ! rpm -q code &>/dev/null && ! command -v code &>/dev/null; then dnf_packages+=(code); fi
+  if ! rpm -q vlc &>/dev/null && ! command -v vlc &>/dev/null; then dnf_packages+=(vlc); fi
+  if ! rpm -q wezterm &>/dev/null && ! command -v wezterm &>/dev/null; then dnf_packages+=(wezterm); fi
+
+  if [[ ${#dnf_packages[@]} -gt 0 ]]; then
+    run "sudo dnf install -y ${dnf_packages[*]}"
+  else
+    logg -i 'DNF-based GUI packages already present.'
+  fi
+
+  install_rpm_package() {
+    local pkg="$1"
+    local url="$2"
+    local label="$3"
+    local filename="$4"
+    local dest="$download_dir/${filename:-$pkg}.rpm"
+
+    if rpm -q "$pkg" &>/dev/null; then
+      logg -i "$label already installed."
+      return
+    fi
+
+    logg -i "Downloading $label installer."
+    run "curl -L \"$url\" -o \"$dest\""
+    run "sudo dnf install -y \"$dest\""
+  }
+
+  install_rpm_package google-chrome-stable 'https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm' 'Google Chrome'
+  install_rpm_package slack 'https://downloads.slack-edge.com/desktop-releases/linux/x64/latest/slack-desktop-latest-x86_64.rpm' 'Slack' 'slack-desktop'
+  install_rpm_package discord 'https://discord.com/api/download?platform=linux&format=rpm' 'Discord'
+
+  if ! command -v spotify &>/dev/null; then
+    if command -v flatpak &>/dev/null; then
+      run 'flatpak install -y flathub com.spotify.Client'
+    else
+      logg -w 'Flatpak not available; skipping Spotify installation. See gui-apps-linux.md for manual steps.'
+    fi
+  fi
+
+  if ! command -v postman &>/dev/null; then
+    if command -v flatpak &>/dev/null; then
+      run 'flatpak install -y flathub com.getpostman.Postman'
+    else
+      logg -w 'Flatpak not available; skipping Postman installation. See gui-apps-linux.md for manual steps.'
+    fi
+  fi
+
+  if ! command -v thinkorswim &>/dev/null; then
+    logg -w 'Thinkorswim requires the vendor shell installer. Download from TD Ameritrade manually.'
+  fi
+}
+
+# Install and configure Neovim tooling via bob and uv
+# Usage: setup_neovim
+setup_neovim() {
+  if command -v bob &>/dev/null; then
+    if ((DRY_RUN)); then
+      logg -i '[dry-run] bob install stable && bob install nightly && bob use nightly'
+    else
+      bob install stable
+      bob install nightly
+      bob use nightly
+    fi
+  else
+    logg -w 'bob not installed; skipping Neovim version management.'
+  fi
+
+  if command -v uv &>/dev/null; then
+    if ((DRY_RUN)); then
+      logg -i '[dry-run] uv tool install basedpyright'
+      logg -i '[dry-run] uv tool install ruff'
+    else
+      uv tool install basedpyright
+      uv tool install ruff
+    fi
+  else
+    logg -w 'uv not installed; skipping LSP tool installs.'
+  fi
+}
+
+# Keep sudo credentials fresh for long-running operations.
+# Usage: authorize
+authorize() {
+  ((DRY_RUN)) && return
+  command -v sudo &>/dev/null || return
+
+  if ! sudo -v; then
+    logg -w 'Unable to refresh sudo credentials; privileged steps may prompt for password.'
+    return
+  fi
+
+  {
+    while true; do
+      sleep 60
+      sudo -n true || break
+    done
+  } &
+
+  KEEP_SUDO_PID=$!
+  trap '[[ -n ${KEEP_SUDO_PID:-} ]] && kill "$KEEP_SUDO_PID" 2>/dev/null' EXIT
+}
+
+# Ensure macOS CLT installed and export XDG directories
+# Usage: export-xdg
+export-xdg() {
+  [[ $OS_TYPE == macos ]] &&
+    ! command -v xcode-select &>/dev/null &&
+    logg -e 'Please install Xcode Command Line Tools: xcode-select --install' &&
+    exit 1
+
+  export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+  export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+  export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+  export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+}
+
+# Enable 1Password integrations when the CLI is available
+# Usage: use_op
+use_op() {
+  local op_available=0
+  command -v op &>/dev/null && op_available=1
+
+  USE_1PASSWORD=$FORCE_1PASSWORD
+  ((!USE_1PASSWORD && op_available)) && confirm 'Enable 1Password CLI integrations' 'Y' && USE_1PASSWORD=1
+  ((USE_1PASSWORD && !op_available)) && logg -w '1Password CLI not detected. Skipping related steps.' && USE_1PASSWORD=0
+}
+
+# Orchestrate bootstrap workflow and CLI options
+# Usage: main "$@"
+main() {
+  # Parse CLI flags for dry-run, optional 1Password integration, and help output
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+    -p | --with-1password) FORCE_1PASSWORD=1 ;;
+    -n | --dry-run) DRY_RUN=1 ;;
+    -h | --help)
+      cat <<'HELP'
+Usage: bootstrap.sh [-p] [-n] [-h]
+  -p, --with-1password     Enable 1Password integration (requires op CLI)
+  -n, --dry-run            Print actions instead of executing them
+  -h, --help               Show this message
+HELP
+      exit 0
+      ;;
+    *) logg -e "Unknown option: $1" && exit 1 ;;
+    esac
+
+    shift
+  done
+
+  notify 'BEGIN BOOTSTRAP DEVELOPMENT SCRIPT'
+
+  notify 'CREATE XDG ENV VARS & DETECT OS'
+  export-xdg
+  detect_platform
+
+  notify 'AUTHORIZE & DETECT 1PASSWORD'
+  authorize
+  use_op
+
+  notify 'INSTALL COMMANDS & APPS'
+  setup_package_manager
+  install_package_sets
+
+  notify 'SET ENVIRONMENT'
+  collect_environment
+
+  notify 'CREATE SYMLINKS & DIRECTORIES'
+  create_symlinks
+
+  notify 'CONFIGURE OS OPTIONS'
+  configure_macos_defaults
+
+  notify 'CONFIGURE GIT AND GITHUB CLI'
+  configure_git_and_github
+
+  notify 'CLONE DEVELOPER REPOS'
+  clone_developer_repos
+
+  notify 'INSTALL TEMPLATES'
+  install_templates
+
+  notify 'INSTALL SHELL PLUGINS'
+  install_shell_plugins
+
+  notify 'SETUP ATUIN SYNC'
+  setup_atuin_sync
+
+  notify 'LOAD BAT THEMES'
+  rebuild_bat_cache
+
+  notify 'SETUP SUDO AUTH'
+  configure_sudo_auth
+
+  notify 'SUPPRESS LOGIN BANNER'
+  suppress_login_banner
+
+  notify 'CHANGE SHELL'
+  change_shell_default
+
+  notify 'DESKTOP INTEGRATION'
+  configure_desktop_integration
+
+  notify 'SETUP NEOVIM'
+  setup_neovim
+
+  # Exit confirmation messages
+  printf '\n%s\n' "${CYAN}BOOTSTRAP COMPLETE - HAPPY DEVELOPING!...${RESET}"
+  logg -w 'RESTART YOUR TERMINAL WINDOW TO LOAD THE NEW CONFIGURATION'
+  echo
+}
+
+main "$@"

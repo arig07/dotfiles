@@ -12,10 +12,19 @@
 
   # Add iTerm uilities to PATH
   PATH="$PATH:/Applications/iTerm.app/Contents/Resources/utilities"
-
-  export PATH
 }
 
-# Load secrets
+# Prepend uv tools to PATH
+export PATH="$HOME/.local/bin:$PATH"
+
+# Add nvim-bin to PATH
+PATH="$XDG_DATA_HOME/bob/nvim-bin:$PATH"
+
+export PATH
+
+# Load secrets only once per top-level login shell
 # shellcheck disable=SC1091
-[[ -f $HOME/.dotfiles/.env ]] && source "$HOME/.dotfiles/.env"
+[[ -z ${DOTFILES_SECRETS_INIT:-} ]] &&
+  export DOTFILES_SECRETS_INIT=1 &&
+  [[ -f $HOME/.dotfiles/.env ]] &&
+  source "$HOME/.dotfiles/.env"

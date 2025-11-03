@@ -1,0 +1,50 @@
+{
+  "plugins": {
+    "LuaSnip": {
+      "rev": "ccf25a5"
+    },
+    "blink.cmp": {
+      "rev": "2408f14"
+    },
+    "conform.nvim": {
+      "rev": "9fd3d5e"
+    },
+    "fzf-lua": {
+      "rev": "a8458b7"
+    },
+    "gitsigns.nvim": {
+      "rev": "20ad441"
+    },
+    "indent-blankline.nvim": [],
+    "noice.nvim": {
+      "rev": "5099348"
+    },
+    "nui.nvim": [],
+    "nvim-autopairs": {
+      "rev": "7a2c97c"
+    },
+    "nvim-dashboard": [],
+    "nvim-highlight-colors": [],
+    "nvim-notify": [],
+    "nvim-sourdiesel": {
+      "rev": "d38a5a5"
+    },
+    "nvim-spectre": [],
+    "nvim-statusline": {
+      "rev": "8102d84"
+    },
+    "nvim-surround": {
+      "rev": "fcfa7e0"
+    },
+    "nvim-terminal": [],
+    "nvim-tree.lua": {
+      "rev": "64e2192"
+    },
+    "nvim-treesitter": [],
+    "nvim-web-devicons": {
+      "rev": "8dcb311"
+    },
+    "plenary.nvim": [],
+    "vim-tmux-navigator": []
+  }
+}
