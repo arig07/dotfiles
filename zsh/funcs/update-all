@@ -1,29 +1,69 @@
 #!/usr/bin/env zsh
 
-# Asynchronously delete all .DS_Store files system-wide (non-blocking)
-fd -HI .DS_Store / -x rm -f {} &>/dev/null &
-
-# Zsh plugin manager: update zap & plugins
-zap update all
-
-# Update tmux plugins
-$TMUX_PLUGIN_MANAGER_PATH/tpm/bin/update_plugins all
-
-# Set Brewfile path or fallback to default
+# Usage: update-all [Brewfile]
+#   Brewfile (optional): custom brew bundle output path; defaults to ~/.dotfiles/Brewfile
 local brewfile="${1:-$HOME/.dotfiles/Brewfile}"
 
-# Homebrew: upgrade formulae and casks
-brew upgrade
-brew cu -af
+local ICON='󰓒'
+local STEP=0
+local SUBSTEP=0
+local TOTAL_STEPS=5
 
-# Homebrew: clean up and verify
-brew cleanup
-brew doctor
+logg() {
+  local level=INFO color="$BLACK" cmd=''
 
-# Re-dump current brew bundle (force overwrite)
-brew bundle dump --force --file="$brewfile"
+  case "${1-}" in
+  -w) level=WARN && color="$YELLOW" && shift ;;
+  -e) level=ERROR && color="$MAGENTA" && shift ;;
+  -c) cmd="$2" && shift 2 ;;
+  esac
 
-# Post-brew: update icons for any newly installed or updated apps
+  local message="$*"
+  if [[ -n $cmd ]]; then
+    message="Running ${GREEN}${cmd}${RESET}"
+  fi
+
+  printf '%b[%s] %b%b\n' "$color" "$level" "$message" "$RESET"
+  if [[ -n $cmd ]]; then
+    eval "$cmd"
+    return $?
+  fi
+}
+
+notify() {
+  local minor=''
+  case "$1" in
+  -s) SUBSTEP=$((SUBSTEP + 1)) && minor=".$SUBSTEP" && shift ;;
+  *) STEP=$((STEP + 1)) && SUBSTEP=0 ;;
+  esac
+  printf '\n%b%s [%d%s/%d] %s %s%b\n' "$BLUE" "$ICON" "$STEP" "$minor" "$TOTAL_STEPS" "$*" "$ICON" "$RESET"
+}
+
+notify 'PRUNE .DS_STORE ARTIFACTS'
+logg -c "fd -HI .DS_Store / -x rm -f {} &>/dev/null &" 2>/dev/null ||
+  logg -c "find / -name '.DS_Store' -print -delete &>/dev/null &"
+
+notify 'UPDATE ZSH PLUGINS'
+logg -c 'zap update all' 2>/dev/null ||
+  logg -w "ZAP NOT FOUND ON \$PATH; SKIPPING ZSH PLUGINS UPDATE"
+
+notify 'UPDATE TMUX PLUGINS'
+logg -c "$TMUX_PLUGIN_MANAGER_PATH/tpm/bin/update_plugins all" 2>/dev/null ||
+  logg -w 'UPDATE TMUX PLUGINS FAILED'
+
+notify 'RUN HOMEBREW MAINTENANCE'
+notify -s 'UPGRADE FORMULAE AND CASKS'
+logg -c 'brew upgrade' || logg -w 'UPDATE HOMEBREW FORMULAE FAILED'
+logg -c 'brew cu -af' || logg -w 'UPDATE HOMEBREW CASKS FAILED'
+
+notify -s 'CLEANUP AND HEALTH CHECKS'
+logg -c 'brew cleanup' || logg -w 'HOMEBREW CLEANUP FAILED'
+logg -c 'brew doctor' || logg -w 'HOMEBREW DOCTOR FAILED'
+
+notify -s 'EXPORT BREWFILE'
+logg -c "brew bundle dump --force --file=\"${brewfile/#$HOME/~}\"" || logg -w 'UPDATE BREWFILE FAILED'
+
+notify 'REFRESH MACOS ICONS'
 update-icons
 
 # Optional: Update TeX Live Utility (uncomment if used)

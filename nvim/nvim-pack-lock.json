@@ -1,23 +1,23 @@
 {
   "plugins": {
     "LuaSnip": {
-      "rev": "ccf25a5"
+      "rev": "3732756"
     },
     "blink.cmp": {
-      "rev": "2408f14"
+      "rev": "b19413d"
     },
     "conform.nvim": {
-      "rev": "9fd3d5e"
+      "rev": "cde4da5"
     },
     "fzf-lua": {
-      "rev": "a8458b7"
+      "rev": "8337813"
     },
     "gitsigns.nvim": {
       "rev": "20ad441"
     },
     "indent-blankline.nvim": [],
     "noice.nvim": {
-      "rev": "5099348"
+      "rev": "7bfd942"
     },
     "nui.nvim": [],
     "nvim-autopairs": {
@@ -27,7 +27,7 @@
     "nvim-highlight-colors": [],
     "nvim-notify": [],
     "nvim-sourdiesel": {
-      "rev": "d38a5a5"
+      "rev": "0b81484"
     },
     "nvim-spectre": [],
     "nvim-statusline": {
@@ -38,7 +38,7 @@
     },
     "nvim-terminal": [],
     "nvim-tree.lua": {
-      "rev": "64e2192"
+      "rev": "1eda256"
     },
     "nvim-treesitter": [],
     "nvim-web-devicons": {

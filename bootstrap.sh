@@ -129,69 +129,65 @@ confirm() {
   done
 }
 
-# [HF6] run 1Password CLI commands when integration is enabled
-# Usage: safe_op_call <subcommand> [args...]
-safe_op_call() {
+# [HF6] fetch secret field from 1Password when available
+# Usage: get_op_field <item> <field>
+get_op_field() {
+  local item="$1"
+  local field="$2"
+  local value=''
+
   ((USE_1PASSWORD)) || return 1
+  ((DRY_RUN)) && printf '<dry-run:%s>\n' "$field" && return
 
-  command -v op &>/dev/null || {
-    logg -w '1Password CLI not installed. Skipping related action.'
-    return 1
-  }
+  value=$(op item get "$item" \
+    --vault "$OP_VAULT" \
+    --field "$field" \
+    --reveal 2>/dev/null) || return 1
 
-  local quoted_args=()
-  local cmd=op
-
-  for arg in "$@"; do
-    printf -v quoted_arg '%q' "$arg"
-    quoted_args+=("$quoted_arg")
-  done
-
-  [[ ${#quoted_args[@]} -gt 0 ]] && cmd+=" ${quoted_args[*]}"
-
-  run "$cmd"
+  printf '%s' "$value"
 }
 
 # Determine OS and package-manager defaults
-# Usage: detect_platform
 detect_platform() {
   case "$(uname -s)" in
   Darwin)
+    # Ensure xcode installed for macOS
+    command -v xcode-select &>/dev/null || {
+      logg -e 'Please install Xcode Command Line Tools: xcode-select --install'
+      exit 1
+    }
+
+    DISTRO=macOS
     OS_TYPE=macos
     PKG_MGR=brew
-    DISTRO=macOS
     ;;
+
   Linux)
-    [[ -r /etc/os-release ]] || {
+    # Ensure os-release available
+    # shellcheck disable=SC1091
+    source /etc/os-release 2>/dev/null || {
       logg -e 'Unable to detect Linux distribution (missing /etc/os-release).'
       exit 1
     }
 
-    # shellcheck disable=SC1091
-    source /etc/os-release
     DISTRO="${PRETTY_NAME:-${NAME:-Linux}}"
+    OS_TYPE=linux
 
     case "${ID_LIKE:-}$ID" in
-    *debian* | *ubuntu*)
-      OS_TYPE=linux
-      PKG_MGR=apt
-      ;;
-    *fedora* | *rhel* | *centos*)
-      OS_TYPE=linux
-      PKG_MGR=dnf
-      ;;
+    *debian* | *ubuntu*) PKG_MGR=apt ;;
+    *fedora* | *rhel* | *centos*) PKG_MGR=dnf ;;
     *) logg -e "Linux distribution '$DISTRO' is not yet supported." && exit 1 ;;
     esac
     ;;
+
   *) logg -e "Unsupported operating system: $(uname -s)" && exit 1 ;;
   esac
 
   logg -i "TARGET PLATFORM: DISTRO=$DISTRO"
-  logg -i "PACKAGE MANAGER: PKG_MGR=${PKG_MGR}${RESET}"
+  logg -i "PACKAGE MANAGER: PKG_MGR=$PKG_MGR"
 }
 
 # Ensure required package manager tooling is present
-# Usage: setup_package_manager
 setup_package_manager() {
   [[ $PKG_MGR == brew ]] && {
     notify -s 'Ensuring Homebrew is available'
@@ -244,7 +240,6 @@ setup_package_manager() {
 }
 
 # Install brew/apt package manifests and optional updates
-# Usage: install_package_sets
 install_package_sets() {
   if [[ $PKG_MGR == brew ]]; then
     if confirm 'Install packages & apps from Brewfile' 'Y'; then
@@ -422,27 +417,17 @@ install_package_sets() {
 }
 
 # Fetch a secret field from 1Password if enabled
-# Usage: get_op_field <item> <field>
-get_op_field() {
-  local item="$1"
-  local field="$2"
-  local value
-
-  ((USE_1PASSWORD)) || return 1
-  ((DRY_RUN)) && printf '\n' && return 0
-
-  value=$(op item get "$item" --vault "$OP_VAULT" --field "$field" --reveal 2>/dev/null) || return 1
-  printf '%s' "$value"
-}
 
 # Collect environment preferences and prompt for 1Password data
-# Usage: collect_environment
 collect_environment() {
   # Sign into 1Password CLI when integration is enabled
-  ((USE_1PASSWORD)) && {
+  if ((USE_1PASSWORD)); then
     notify -s 'Signing into 1Password CLI'
-    safe_op_call signin || { logg -w 'Skipping 1Password features (signin failed).' && USE_1PASSWORD=0; }
-  }
+    run 'op signin' || {
+      logg -w 'Skipping 1Password features (signin failed).'
+      USE_1PASSWORD=0
+    }
+  fi
 
   # Load any existing Git metadata as defaults
   local existing_git_name existing_git_email existing_signingkey
@@ -550,7 +535,7 @@ symlink() {
     fi
   fi
 
-  if ! pushd "$base" >/dev/null 2>&1; then
+if ! pushd "$base" &>/dev/null; then
     logg -w "Skipping link (unable to enter $base)"
     return
   fi
@@ -574,7 +559,6 @@ symlink() {
 }
 
 # Link dotfiles into their XDG targets and optional media directory.
-# Usage: create_symlinks
 create_symlinks() {
   local vscode_src='../../../.dotfiles/vscode/settings.json'
 
@@ -660,7 +644,6 @@ create_symlinks() {
 }
 
 # Apply preferred macOS UI defaults
-# Usage: configure_macos_defaults
 configure_macos_defaults() {
   if [[ $OS_TYPE != macos ]]; then
     logg -w "Skipping macOS UI tweaks on $DISTRO."
@@ -692,17 +675,10 @@ configure_macos_defaults() {
 }
 
 # Configure git/user settings and GitHub CLI defaults
-# Usage: configure_git_and_github
 configure_git_and_github() {
-  if ((DRY_RUN)); then
-    logg -i "[dry-run] git config --global user.name $GIT_NAME"
-    logg -i "[dry-run] git config --global user.email $GIT_EMAIL"
-    [[ -n $GIT_SIGNINGKEY ]] && logg -i "[dry-run] git config --global user.signingkey $GIT_SIGNINGKEY"
-  else
-    git config --global user.name "$GIT_NAME"
-    git config --global user.email "$GIT_EMAIL"
-    [[ -n $GIT_SIGNINGKEY ]] && git config --global user.signingkey "$GIT_SIGNINGKEY"
-  fi
+  run "git config --global user.name \"$GIT_NAME\""
+  run "git config --global user.email \"$GIT_EMAIL\""
+  [[ -n $GIT_SIGNINGKEY ]] && run "git config --global user.signingkey \"$GIT_SIGNINGKEY\""
 
   local github="git@github.com:$GITHUB_NAME/dotfiles.git"
 
@@ -753,7 +729,6 @@ configure_git_and_github() {
 }
 
 # Clone curated developer repositories under the user's workspace
-# Usage: clone_developer_repos
 clone_developer_repos() {
   local base="$DEVELOPER_CLONE_ROOT"
 
@@ -807,109 +782,80 @@ clone_developer_repos() {
 }
 
 # Clone or update project template repository
-# Usage: install_templates
 install_templates() {
-  if command -v gh &>/dev/null; then
-    if ((DRY_RUN)); then
-      logg -i "[dry-run] gh repo clone vivek-x-jha/templates $XDG_DATA_HOME/templates"
-    else
-      gh repo clone vivek-x-jha/templates "$XDG_DATA_HOME/templates" 2>/dev/null || logg -w 'gh repo clone failed (already exists?).'
-    fi
-  else
-    logg -w 'GitHub CLI not available. Skipping template clone.'
-  fi
-}
+  local templates_remote='git@github.com:vivek-x-jha/templates.git'
+  local templates_dir="$XDG_DATA_HOME/templates"
+  local templates_backup="${templates_dir}.bak"
 
-# Install zap and ble.sh shell plugins
-# Usage: install_shell_plugins
-install_shell_plugins() {
-  if [[ ! -f $XDG_DATA_HOME/zap/zap.zsh ]]; then
-    if ((DRY_RUN)); then
-      logg -i '[dry-run] zsh <(curl -s https://raw.githubusercontent.com/zap-zsh/zap/master/install.zsh) --branch release-v1 -k'
-    else
-      zsh <(curl -s https://raw.githubusercontent.com/zap-zsh/zap/master/install.zsh) --branch release-v1 -k
-    fi
-  fi
+  # Ensure git available
+  ! command -v git &>/dev/null && logg -w 'git not available or not in PATH. Skipping template clone.' && return
 
-  if ((DRY_RUN)); then
-    logg -i '[dry-run] git clone --recursive --depth 1 --shallow-submodules https://github.com/akinomyoga/ble.sh.git'
-    logg -i "[dry-run] make -C ble.sh install PREFIX=$HOME/.local"
-    logg -i '[dry-run] rm -rf ble.sh'
-  else
-    if git clone --recursive --depth 1 --shallow-submodules https://github.com/akinomyoga/ble.sh.git; then
-      make -C ble.sh install PREFIX="$HOME/.local"
-      rm -rf ble.sh
-    else
-      logg -w 'Unable to clone ble.sh'
-    fi
-  fi
+  # Backup existing templates directory
+  [[ -d $templates_dir ]] && {
+    [[ -d $templates_backup ]] && run "rm -rf \"$templates_backup\""
+
+    run "cp -a \"$templates_dir\" \"$templates_backup\"" || {
+      logg -w 'Failed to backup existing templates directory.'
+      return
+    }
+
+    run "rm -rf \"$templates_dir\""
+  }
+
+  # Download templates repo
+  run "git clone \"$templates_remote\" \"$templates_dir\"" || logg -w 'Cloning templates failed - please check GitHub repo exists'
 }
 
 # Provision Atuin sync credentials via 1Password
-# Usage: setup_atuin_sync
 setup_atuin_sync() {
-  if ! command -v atuin &>/dev/null; then
-    logg -w 'Atuin not installed. Skipping sync setup.'
-    return
-  fi
+  # Skip Atuin 1Password setup when either command unavailable
+  ! command -v atuin &>/dev/null && logg -w 'Atuin not installed. Skipping sync setup.' && return
+  ! ((USE_1PASSWORD)) && logg -w '1Password disabled. Skipping Atuin vault automation.' && return
+  ! command -v op &>/dev/null && logg -w '1Password CLI not installed. Skipping Atuin vault automation.' && return
 
-  if ! ((USE_1PASSWORD)); then
-    logg -w '1Password disabled. Skipping Atuin vault automation.'
-    return
-  fi
+  local atuin_op="${ATUIN_OP_TITLE} --vault ${OP_VAULT}"
 
-  if ((DRY_RUN)); then
-    logg -i "[dry-run] op item get $ATUIN_OP_TITLE --vault $OP_VAULT"
-    logg -i '[dry-run] atuin register/login'
-    return
-  fi
+  # Ensure Atuin Sync 1Password login exists with password generated
+  run "op item get \"$atuin_op\" >/dev/null || op item create \
+    --title \"$atuin_op\" \
+    --category login \
+    --generate-password='letters,digits,symbols,32' \
+    username=\"$ATUIN_USERNAME\" \
+    email[text]=\"$ATUIN_EMAIL\" \
+    key[password]='<Update with \$(atuin key)>' >/dev/null"
 
-  if ! safe_op_call item get "$ATUIN_OP_TITLE" --vault "$OP_VAULT" &>/dev/null; then
-    safe_op_call item create \
-      --vault "$OP_VAULT" \
-      --category login \
-      --title "$ATUIN_OP_TITLE" \
-      --generate-password='letters,digits,symbols,32' \
-      "username=$ATUIN_USERNAME" \
-      "email[text]=$ATUIN_EMAIL" \
-      "key[password]=<Update with \$(atuin key)>" >/dev/null
-  fi
-
-  local atuin_password
+  # Retreive Atuin Sync password
+  local atuin_password=''
   atuin_password="$(get_op_field "$ATUIN_OP_TITLE" password)"
-  if [[ -z $atuin_password ]]; then
-    logg -w 'Failed to fetch Atuin password from 1Password. Skipping sync.'
-    return
-  fi
+  [[ -z $atuin_password ]] && logg -w 'Failed to fetch Atuin password from 1Password. Skipping sync.' && return
 
-  atuin register -u "$ATUIN_USERNAME" -e "$ATUIN_EMAIL" -p "$atuin_password" || true
-  safe_op_call item edit "$ATUIN_OP_TITLE" --vault "$OP_VAULT" key="$(atuin key)" >/dev/null
+  # Register Atuin credentials obtained from 1Password - if already exists is idempotent
+  run "atuin register \
+    -u \"$ATUIN_USERNAME\" \
+    -e \"$ATUIN_EMAIL\" \
+    -p \"$atuin_password\" || true"
 
-  atuin status | grep -q "$ATUIN_USERNAME" || (
-    atuin logout
-    atuin login -u "$ATUIN_USERNAME" -p "$atuin_password" -k "$(get_op_field "$ATUIN_OP_TITLE" key)"
-  ) >/dev/null 2>&1
+  # Update Atuin Sync 1Password with generated key
+  run "op item edit \"$atuin_op\" key=\"$(atuin key)\" >/dev/null"
 
-  atuin import auto
-  atuin sync
-}
+  # Retrieve freshly updated Atuin sync key
+  local atuin_key=''
+  atuin_key="$(get_op_field "$ATUIN_OP_TITLE" key)"
+  [[ -z $atuin_key ]] && logg -w 'Failed to retrieve Atuin sync key from 1Password. Skipping login refresh.' && return
 
-# Rebuild bat's theme cache when available
-# Usage: rebuild_bat_cache
-rebuild_bat_cache() {
-  if ! command -v bat &>/dev/null; then
-    logg -w 'bat not installed. Skipping cache rebuild.'
-    return
-  fi
-  if ((DRY_RUN)); then
-    logg -i '[dry-run] bat cache --build'
-  else
-    bat cache --build
-  fi
+  # Ensure Atuin session logged in using 1Password-managed credentials
+  run "atuin status | grep -q \"$ATUIN_USERNAME\" || ( \
+    atuin logout && atuin login \
+    -u \"$ATUIN_USERNAME\" \
+    -p \"$atuin_password\" \
+    -k \"$atuin_key\" ) &>/dev/null"
+
+  # Sync Atuin history with existing commands in server
+  run 'atuin import auto'
+  run 'atuin sync'
 }
 
 # Configure Touch ID-backed sudo when supported
-# Usage: configure_sudo_auth
 configure_sudo_auth() {
   if [[ $OS_TYPE == macos ]]; then
     local brew_prefix
@@ -930,19 +876,7 @@ configure_sudo_auth() {
   fi
 }
 
-# Suppress login banner by ensuring ~/.hushlogin exists
-# Usage: suppress_login_banner
-suppress_login_banner() {
-  if ((DRY_RUN)); then
-    logg -i "[dry-run] touch $HOME/.hushlogin"
-  else
-    touch "$HOME/.hushlogin"
-  fi
-  logg -i 'Ensured ~/.hushlogin exists'
-}
-
 # Ensure preferred shell binaries are registered and set as default
-# Usage: change_shell_default
 change_shell_default() {
   local shell_paths=()
   if [[ $OS_TYPE == macos ]]; then
@@ -987,23 +921,17 @@ change_shell_default() {
   fi
 }
 
-# Configure desktop integrations like Hammerspoon
-# Usage: configure_desktop_integration
-configure_desktop_integration() {
-  if [[ $OS_TYPE == macos ]]; then
-    if ((DRY_RUN)); then
-      logg -i "[dry-run] defaults write org.hammerspoon.Hammerspoon MJConfigFile $XDG_CONFIG_HOME/hammerspoon/init.lua"
-    else
-      defaults write org.hammerspoon.Hammerspoon MJConfigFile "$XDG_CONFIG_HOME/hammerspoon/init.lua"
-      logg -i 'Configure System Settings > Privacy & Security > Accessibility for Hammerspoon.'
-    fi
-  else
+# Move hammerspoon entry point to $XDG_CONFIG_HOME
+configure_hammerspoon() {
+  run "defaults write org.hammerspoon.Hammerspoon MJConfigFile \"$XDG_CONFIG_HOME/hammerspoon/init.lua\" 2>/dev/null" || {
     logg -w "Hammerspoon configuration skipped on $DISTRO. Configure your window manager manually."
-  fi
+    return
+  }
+
+  logg -i 'Configure System Settings > Privacy & Security > Accessibility for Hammerspoon.'
 }
 
 # Install optional Linux-only CLI dependencies
-# Usage: install_linux_optional_tools
 install_linux_optional_tools() {
   [[ $OS_TYPE == linux ]] || return
 
@@ -1065,7 +993,6 @@ install_linux_optional_tools() {
 }
 
 # Install GUI applications recommended for Linux setups
-# Usage: install_linux_gui_apps
 install_linux_gui_apps() {
   [[ $OS_TYPE == linux ]] || return
 
@@ -1083,7 +1010,6 @@ install_linux_gui_apps() {
 }
 
 # Install GUI tooling on Debian/Ubuntu systems
-# Usage: install_linux_gui_apps_apt
 install_linux_gui_apps_apt() {
   local download_dir="$HOME/Downloads/linux-gui"
   local apt_update_needed=0
@@ -1195,7 +1121,6 @@ EOF"
 }
 
 # Install GUI tooling on Fedora/RHEL systems
-# Usage: install_linux_gui_apps_dnf
 install_linux_gui_apps_dnf() {
   local download_dir="$HOME/Downloads/linux-gui"
   local dnf_refresh_needed=0
@@ -1309,7 +1234,6 @@ EOF"
 }
 
 # Install and configure Neovim tooling via bob and uv
-# Usage: setup_neovim
 setup_neovim() {
   if command -v bob &>/dev/null; then
     if ((DRY_RUN)); then
@@ -1337,7 +1261,6 @@ setup_neovim() {
 }
 
 # Keep sudo credentials fresh for long-running operations.
-# Usage: authorize
 authorize() {
   ((DRY_RUN)) && return
   command -v sudo &>/dev/null || return
@@ -1358,22 +1281,7 @@ authorize() {
   trap '[[ -n ${KEEP_SUDO_PID:-} ]] && kill "$KEEP_SUDO_PID" 2>/dev/null' EXIT
 }
 
-# Ensure macOS CLT installed and export XDG directories
-# Usage: export-xdg
-export-xdg() {
-  [[ $OS_TYPE == macos ]] &&
-    ! command -v xcode-select &>/dev/null &&
-    logg -e 'Please install Xcode Command Line Tools: xcode-select --install' &&
-    exit 1
-
-  export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
-  export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
-  export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-  export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
-}
-
 # Enable 1Password integrations when the CLI is available
-# Usage: use_op
 use_op() {
   local op_available=0
   command -v op &>/dev/null && op_available=1
@@ -1407,9 +1315,12 @@ HELP
   done
 
   notify 'BEGIN BOOTSTRAP DEVELOPMENT SCRIPT'
+  export XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+  export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$HOME/.cache}"
+  export XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+  export XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 
-  notify 'CREATE XDG ENV VARS & DETECT OS'
-  export-xdg
+  notify 'SET UNIX DISTRO + PACKAGE MANAGER'
   detect_platform
 
   notify 'AUTHORIZE & DETECT 1PASSWORD'
@@ -1438,26 +1349,32 @@ HELP
   notify 'INSTALL TEMPLATES'
   install_templates
 
-  notify 'INSTALL SHELL PLUGINS'
-  install_shell_plugins
+  notify 'INSTALL SHELL PLUGIN MANAGERS'
+  notify -s 'Install zap'
+  [[ -f $XDG_DATA_HOME/zap/zap.zsh ]] || run 'zsh <(curl -s https://raw.githubusercontent.com/zap-zsh/zap/master/install.zsh) --branch release-v1 -k'
+
+  notify -s 'Install ble.sh'
+  run 'git clone --recursive --depth 1 --shallow-submodules https://github.com/akinomyoga/ble.sh.git'
+  run "make -C ble.sh install PREFIX=\"$HOME/.local\"" 2>/dev/null || logg -w 'Failed to install ble.sh'
+  run 'rm -rf ble.sh'
 
   notify 'SETUP ATUIN SYNC'
   setup_atuin_sync
 
   notify 'LOAD BAT THEMES'
-  rebuild_bat_cache
+  run 'bat cache --build 2>/dev/null' || logg -w 'bat not available - skipping cache rebuild.'
 
   notify 'SETUP SUDO AUTH'
   configure_sudo_auth
 
   notify 'SUPPRESS LOGIN BANNER'
-  suppress_login_banner
+  run 'touch ~/.hushlogin' && logg -i 'Ensured ~/.hushlogin exists'
 
   notify 'CHANGE SHELL'
   change_shell_default
 
   notify 'DESKTOP INTEGRATION'
-  configure_desktop_integration
+  configure_hammerspoon
 
   notify 'SETUP NEOVIM'
   setup_neovim
