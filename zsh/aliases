@@ -2,15 +2,6 @@
 
 # -------------------------------- File Editing ---------------------------------------
 
-# Open all files in current directory excluding...
-command -v fd &>/dev/null && alias va='$EDITOR $(fd -HItf \
-  --exclude .git \
-  --exclude .github \
-  --exclude __pycache__ \
-  --exclude Session.vim \
-  --exclude .venv \
-  --exclude "Icon?")'
-
 # Open vim using viminfo state file
 alias vi='vim -i "$XDG_STATE_HOME/vim/viminfo"'
 
